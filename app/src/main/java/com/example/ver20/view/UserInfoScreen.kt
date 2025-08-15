@@ -1,0 +1,279 @@
+package com.example.ver20.view
+
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.example.ver20.dao.UserService
+import com.example.ver20.dao.UserData
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun UserInfoScreen(
+    onBackClick: () -> Unit,
+    onLoginClick: () -> Unit = {},
+    onCreateAccountClick: () -> Unit = {}
+) {
+    val context = LocalContext.current
+    val userService = UserService()
+    var currentUser by remember { mutableStateOf<UserData?>(null) }
+
+    // 현재 로그인된 사용자 확인
+    LaunchedEffect(Unit) {
+        currentUser = userService.getUserFromPreferences(context)
+    }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = {
+                    Text(
+                        "유저 정보",
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                },
+                navigationIcon = {
+                    IconButton(onClick = onBackClick) {
+                        Icon(
+                            Icons.Default.ArrowBack,
+                            contentDescription = "뒤로 가기",
+                            tint = Color.White
+                        )
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color(0xFF2196F3),
+                    titleContentColor = Color.White
+                )
+            )
+        }
+    ) { paddingValues ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+                .padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Spacer(modifier = Modifier.height(32.dp))
+
+            // 프로필 이미지
+            Card(
+                shape = CircleShape,
+                colors = CardDefaults.cardColors(
+                    containerColor = Color(0xFF2196F3)
+                ),
+                modifier = Modifier.size(120.dp)
+            ) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Default.Person,
+                        contentDescription = "프로필",
+                        tint = Color.White,
+                        modifier = Modifier.size(60.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // 로그인 상태에 따른 표시
+            if (currentUser != null) {
+                // 로그인된 상태
+                Text(
+                    currentUser!!.username,
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF1976D2)
+                )
+
+                Text(
+                    currentUser!!.email,
+                    fontSize = 16.sp,
+                    color = Color.Gray
+                )
+
+                Spacer(modifier = Modifier.height(32.dp))
+
+                // 정보 카드들
+                UserInfoCard(
+                    icon = Icons.Default.AccountBalance,
+                    title = "계좌 정보",
+                    subtitle = "잔고 및 자산 조회"
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                UserInfoCard(
+                    icon = Icons.Default.Security,
+                    title = "보안 설정",
+                    subtitle = "API 키 및 보안 관리"
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                UserInfoCard(
+                    icon = Icons.Default.Notifications,
+                    title = "알림 설정",
+                    subtitle = "가격 알림 및 거래 알림"
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                UserInfoCard(
+                    icon = Icons.Default.Settings,
+                    title = "앱 설정",
+                    subtitle = "테마 및 기본 설정"
+                )
+
+                Spacer(modifier = Modifier.weight(1f))
+
+                // 로그아웃 버튼
+                Button(
+                    onClick = {
+                        userService.logout(context)
+                        currentUser = null
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(50.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFFF44336),
+                        contentColor = Color.White
+                    )
+                ) {
+                    Icon(Icons.Default.ExitToApp, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("로그아웃", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                }
+            } else {
+                // 로그인되지 않은 상태
+                Text(
+                    "로그인이 필요합니다",
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF1976D2)
+                )
+
+                Text(
+                    "계정에 로그인하여 모든 기능을 이용하세요",
+                    fontSize = 16.sp,
+                    color = Color.Gray
+                )
+
+                Spacer(modifier = Modifier.height(32.dp))
+
+                // 로그인 버튼
+                Button(
+                    onClick = onLoginClick,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF2196F3),
+                        contentColor = Color.White
+                    )
+                ) {
+                    Icon(Icons.Default.Login, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        "로그인",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // 계정 생성 버튼
+                OutlinedButton(
+                    onClick = onCreateAccountClick,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = Color(0xFF2196F3)
+                    )
+                ) {
+                    Icon(Icons.Default.PersonAdd, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        "계정 만들기",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                Spacer(modifier = Modifier.weight(1f))
+            }
+        }
+    }
+}
+
+@Composable
+fun UserInfoCard(
+    icon: ImageVector,
+    title: String,
+    subtitle: String
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = Color(0xFFE3F2FD)
+        ),
+        onClick = { /* TODO: 각 항목별 기능 구현 */ }
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                icon,
+                contentDescription = null,
+                tint = Color(0xFF2196F3),
+                modifier = Modifier.size(24.dp)
+            )
+
+            Spacer(modifier = Modifier.width(16.dp))
+
+            Column(
+                modifier = Modifier.weight(1f)
+            ) {
+                Text(
+                    title,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF1976D2)
+                )
+                Text(
+                    subtitle,
+                    fontSize = 14.sp,
+                    color = Color.Gray
+                )
+            }
+
+            Icon(
+                Icons.Default.ChevronRight,
+                contentDescription = "더보기",
+                tint = Color.Gray,
+                modifier = Modifier.size(24.dp)
+            )
+        }
+    }
+}

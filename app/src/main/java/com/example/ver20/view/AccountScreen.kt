@@ -1,4 +1,4 @@
-package com.example.ver20
+package com.example.ver20.view
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
