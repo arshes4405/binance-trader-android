@@ -135,7 +135,8 @@ fun AdvancedCciStrategyScreen(
                 BacktestResultCard(backtestResult!!)
             }
 
-            Spacer(modifier = Modifier.height(32.dp))
+            // 하단 여백 추가 (잘림 방지)
+            Spacer(modifier = Modifier.height(100.dp))
         }
     }
 }
