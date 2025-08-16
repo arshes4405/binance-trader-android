@@ -10,6 +10,10 @@ import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.*
 
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
+import okhttp3.ResponseBody
+
 // GET 방식 API 인터페이스 - 사용자별 관리
 interface VercelApi {
     // 사용자별 즐겨찾기 코인 조회
@@ -50,6 +54,14 @@ interface VercelApi {
         @Query("action") action: String = "getUserSettings",
         @Query("username") username: String
     ): Call<ApiResponse>
+}
+
+interface RawApi {
+    @GET("api")
+    fun getFavoriteCoinsRaw(
+        @Query("action") action: String = "getFavoriteCoins",
+        @Query("username") username: String
+    ): Call<okhttp3.ResponseBody>
 }
 
 // 응답 데이터 클래스
@@ -113,33 +125,63 @@ class MongoDbService {
     ) {
         Log.d("MongoDbService", "사용자별 즐겨찾기 코인 조회: username=$username")
 
-        api.getFavoriteCoins(username = username).enqueue(object : Callback<ApiResponse> {
-            override fun onResponse(call: Call<ApiResponse>, response: Response<ApiResponse>) {
+        // 배열 응답을 직접 받기 위한 Raw API 호출
+        val rawRetrofit = Retrofit.Builder()
+            .baseUrl(baseUrl)
+            .build()
+
+        val rawApi = rawRetrofit.create(RawApi::class.java)
+        val rawCall = rawApi.getFavoriteCoinsRaw(username = username)
+
+        Log.d("MongoDbService", "요청 URL: ${rawCall.request().url}")
+
+        rawCall.enqueue(object : Callback<okhttp3.ResponseBody> {
+            override fun onResponse(call: Call<okhttp3.ResponseBody>, response: Response<okhttp3.ResponseBody>) {
                 Log.d("MongoDbService", "즐겨찾기 조회 응답: ${response.code()}")
-                Log.d("MongoDbService", "요청 URL: ${call.request().url}")
 
                 if (response.isSuccessful) {
                     try {
-                        // 직접 배열로 응답이 오는 경우
-                        val data = response.body()?.data
-                        val symbols = if (data is List<*>) {
-                            data.mapNotNull { item ->
-                                when (item) {
-                                    is Map<*, *> -> item["symbol"] as? String
-                                    is String -> item
-                                    else -> null
+                        val jsonString = response.body()?.string() ?: ""
+                        Log.d("MongoDbService", "원본 JSON 응답: $jsonString")
+
+                        if (jsonString.trim().startsWith("[")) {
+                            // 배열로 직접 응답하는 경우
+                            val gson = com.google.gson.Gson()
+                            val type = object : com.google.gson.reflect.TypeToken<List<FavoriteCoinData>>() {}.type
+                            val coinList: List<FavoriteCoinData> = gson.fromJson(jsonString, type)
+                            val symbols = coinList.map { it.symbol }
+
+                            Log.d("MongoDbService", "✅ 배열 파싱 성공: $symbols (사용자: $username)")
+                            callback(symbols, null)
+
+                        } else if (jsonString.trim().startsWith("{")) {
+                            // 객체로 응답하는 경우
+                            val gson = com.google.gson.Gson()
+                            val apiResponse = gson.fromJson(jsonString, ApiResponse::class.java)
+
+                            if (apiResponse.success == true && apiResponse.data is List<*>) {
+                                val symbols = (apiResponse.data as List<*>).mapNotNull { item ->
+                                    when (item) {
+                                        is Map<*, *> -> item["symbol"] as? String
+                                        is String -> item
+                                        else -> null
+                                    }
                                 }
+                                Log.d("MongoDbService", "✅ 객체 파싱 성공: $symbols (사용자: $username)")
+                                callback(symbols, null)
+                            } else {
+                                Log.e("MongoDbService", "❌ API 응답 오류: ${apiResponse.message}")
+                                callback(emptyList(), apiResponse.message ?: "API 오류")
                             }
                         } else {
-                            // 혹시 서버에서 배열을 직접 반환하는 경우를 위한 처리
-                            emptyList()
+                            Log.e("MongoDbService", "❌ 알 수 없는 응답 형식: $jsonString")
+                            callback(emptyList(), "알 수 없는 응답 형식")
                         }
 
-                        Log.d("MongoDbService", "✅ 즐겨찾기 조회 성공: $symbols (사용자: $username)")
-                        callback(symbols, null)
                     } catch (e: Exception) {
-                        Log.e("MongoDbService", "❌ 데이터 파싱 오류: ${e.message}")
-                        callback(emptyList(), "데이터 파싱 오류: ${e.message}")
+                        Log.e("MongoDbService", "❌ JSON 파싱 오류: ${e.message}")
+                        e.printStackTrace()
+                        callback(emptyList(), "JSON 파싱 오류: ${e.message}")
                     }
                 } else {
                     val error = "코인 조회 실패 (코드: ${response.code()})"
@@ -148,7 +190,7 @@ class MongoDbService {
                 }
             }
 
-            override fun onFailure(call: Call<ApiResponse>, t: Throwable) {
+            override fun onFailure(call: Call<okhttp3.ResponseBody>, t: Throwable) {
                 Log.e("MongoDbService", "❌ 네트워크 오류: ${t.message}")
                 callback(emptyList(), "네트워크 오류: ${t.message}")
             }
