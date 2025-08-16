@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
@@ -147,18 +148,23 @@ fun BinanceTraderApp() {
                 },
                 bottomBar = {
                     NavigationBar(
-                        containerColor = Color(0xFF2196F3)
+                        containerColor = Color(0xFF2196F3),
+                        modifier = Modifier.height(110.dp) // 높이를 60dp로 제한
                     ) {
                         tabs.forEachIndexed { index, tab ->
                             NavigationBarItem(
                                 icon = {
                                     Icon(
                                         tab.icon,
-                                        contentDescription = tab.title
+                                        contentDescription = tab.title,
+                                        modifier = Modifier.size(20.dp) // 아이콘 크기를 줄임
                                     )
                                 },
                                 label = {
-                                    Text(tab.title)
+                                    Text(
+                                        tab.title,
+                                        fontSize = 11.sp // 폰트 크기를 줄임
+                                    )
                                 },
                                 selected = selectedTab == index,
                                 onClick = { selectedTab = index },

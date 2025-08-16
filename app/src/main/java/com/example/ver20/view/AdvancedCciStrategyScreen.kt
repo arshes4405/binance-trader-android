@@ -23,7 +23,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.DecimalFormat
-import com.example.ver20.dao.CciBacktestEngine
+import com.example.ver20.dao.RealDataBacktestEngine
 import com.example.ver20.dao.CciStrategySettings
 import com.example.ver20.dao.CciBacktestResult
 import com.example.ver20.dao.TradeResult
@@ -113,8 +113,8 @@ fun AdvancedCciStrategyScreen(
                     showResults = false
                     CoroutineScope(Dispatchers.Main).launch {
                         // 실제 백테스팅 엔진 사용
-                        val engine = CciBacktestEngine()
-                        backtestResult = engine.runBacktest(settings)
+                        val engine = RealDataBacktestEngine()
+                        backtestResult = engine.runRealDataBacktest(settings)
                         isRunning = false
                         showResults = true
                     }
