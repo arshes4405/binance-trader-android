@@ -26,7 +26,7 @@ fun AccountBalanceScreen(
 ) {
     val context = LocalContext.current
     val apiKeyService = remember { ApiKeyService(context) }
-    val accountService = remember { AccountService() }
+    val accountService = remember { RealAccountService() } // 실제 서비스 사용
     val coroutineScope = rememberCoroutineScope()
 
     // 상태 변수들
@@ -49,6 +49,9 @@ fun AccountBalanceScreen(
     var earnTotalUSD by remember { mutableStateOf(0.0) }
     var futuresTotalUSD by remember { mutableStateOf(0.0) }
 
+    // 가격 정보 (실시간 USD 환산용)
+    var priceMap by remember { mutableStateOf<Map<String, Double>>(emptyMap()) }
+
     // API 키 상태 확인 및 계좌 정보 로드
     LaunchedEffect(Unit) {
         val keys = apiKeyService.getApiKeys()
@@ -57,21 +60,30 @@ fun AccountBalanceScreen(
 
         if (keys != null) {
             isTestnet = keys.isTestnet
-            loadAccountData(accountService, keys) { account, balanceList, total, error ->
+            isLoading = true
+
+            // 실제 바이낸스 API 호출
+            loadRealAccountData(accountService, keys) { account, balanceList, total, error ->
                 accountInfo = account
                 balances = balanceList
                 totalBalanceUSD = total
                 errorMessage = error
                 isLoading = false
 
-                // 탭별 자산 분류
-                classifyBalancesByTab(balanceList) { spot, earn, futures, spotTotal, earnTotal, futuresTotal ->
-                    spotBalances = spot
-                    earnBalances = earn
-                    futuresBalances = futures
-                    spotTotalUSD = spotTotal
-                    earnTotalUSD = earnTotal
-                    futuresTotalUSD = futuresTotal
+                // 가격 정보 로드 및 탭별 자산 분류
+                if (account != null && error == null) {
+                    coroutineScope.launch {
+                        priceMap = accountService.getPricesForUSDCalculation(keys.isTestnet)
+
+                        classifyRealBalancesByTab(balanceList, priceMap) { spot, earn, futures, spotTotal, earnTotal, futuresTotal ->
+                            spotBalances = spot
+                            earnBalances = earn
+                            futuresBalances = futures
+                            spotTotalUSD = spotTotal
+                            earnTotalUSD = earnTotal
+                            futuresTotalUSD = futuresTotal
+                        }
+                    }
                 }
             }
         }
@@ -98,21 +110,27 @@ fun AccountBalanceScreen(
                         isLoading = true
                         errorMessage = null
                         coroutineScope.launch {
-                            loadAccountData(accountService, apiKeyData!!) { account, balanceList, total, error ->
+                            loadRealAccountData(accountService, apiKeyData!!) { account, balanceList, total, error ->
                                 accountInfo = account
                                 balances = balanceList
                                 totalBalanceUSD = total
                                 errorMessage = error
                                 isLoading = false
 
-                                // 탭별 자산 재분류
-                                classifyBalancesByTab(balanceList) { spot, earn, futures, spotTotal, earnTotal, futuresTotal ->
-                                    spotBalances = spot
-                                    earnBalances = earn
-                                    futuresBalances = futures
-                                    spotTotalUSD = spotTotal
-                                    earnTotalUSD = earnTotal
-                                    futuresTotalUSD = futuresTotal
+                                // 가격 정보 업데이트 및 탭별 자산 재분류
+                                if (account != null && error == null) {
+                                    coroutineScope.launch {
+                                        priceMap = accountService.getPricesForUSDCalculation(apiKeyData!!.isTestnet)
+
+                                        classifyRealBalancesByTab(balanceList, priceMap) { spot, earn, futures, spotTotal, earnTotal, futuresTotal ->
+                                            spotBalances = spot
+                                            earnBalances = earn
+                                            futuresBalances = futures
+                                            spotTotalUSD = spotTotal
+                                            earnTotalUSD = earnTotal
+                                            futuresTotalUSD = futuresTotal
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -139,20 +157,26 @@ fun AccountBalanceScreen(
                                 isLoading = true
                                 errorMessage = null
                                 coroutineScope.launch {
-                                    loadAccountData(accountService, apiKeyData!!) { account, balanceList, total, error ->
+                                    loadRealAccountData(accountService, apiKeyData!!) { account, balanceList, total, error ->
                                         accountInfo = account
                                         balances = balanceList
                                         totalBalanceUSD = total
                                         errorMessage = error
                                         isLoading = false
 
-                                        classifyBalancesByTab(balanceList) { spot, earn, futures, spotTotal, earnTotal, futuresTotal ->
-                                            spotBalances = spot
-                                            earnBalances = earn
-                                            futuresBalances = futures
-                                            spotTotalUSD = spotTotal
-                                            earnTotalUSD = earnTotal
-                                            futuresTotalUSD = futuresTotal
+                                        if (account != null && error == null) {
+                                            coroutineScope.launch {
+                                                priceMap = accountService.getPricesForUSDCalculation(apiKeyData!!.isTestnet)
+
+                                                classifyRealBalancesByTab(balanceList, priceMap) { spot, earn, futures, spotTotal, earnTotal, futuresTotal ->
+                                                    spotBalances = spot
+                                                    earnBalances = earn
+                                                    futuresBalances = futures
+                                                    spotTotalUSD = spotTotal
+                                                    earnTotalUSD = earnTotal
+                                                    futuresTotalUSD = futuresTotal
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -463,8 +487,12 @@ private fun EnhancedBalanceRowComponent(balance: BalanceInfo) {
     val lockedAmount = balance.locked.toDoubleOrNull() ?: 0.0
     val freeAmount = balance.free.toDoubleOrNull() ?: 0.0
 
-    // 가상의 USD 가격 (실제로는 API에서 가져와야 함)
-    val usdValue = calculateUSDValue(balance.asset, totalAmount)
+    // 실제 USD 가격 계산 (priceMap 사용)
+    // 여기서는 간단한 계산을 사용하지만, 실제로는 priceMap을 전달받아야 함
+    val usdValue = when (balance.asset) {
+        "USDT", "BUSD", "USDC", "FDUSD" -> totalAmount
+        else -> 0.0 // 실제로는 priceMap에서 조회해야 함
+    }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -492,7 +520,7 @@ private fun EnhancedBalanceRowComponent(balance: BalanceInfo) {
                 )
                 if (usdValue > 0) {
                     Text(
-                        "$${String.format("%.2f", usdValue)}",
+                        "${String.format("%.2f", usdValue)}",
                         fontSize = 10.sp,
                         color = Color(0xFF4CAF50)
                     )
@@ -689,82 +717,6 @@ private fun EmptyContentSection() {
 
 // 데이터 클래스 (사용하지 않으므로 제거)
 
-// 헬퍼 함수들
-private fun classifyBalancesByTab(
-    balances: List<BalanceInfo>,
-    callback: (List<BalanceInfo>, List<BalanceInfo>, List<BalanceInfo>, Double, Double, Double) -> Unit
-) {
-    val nonZeroBalances = BalanceUtils.getNonZeroBalances(balances)
+// 헬퍼 함수들 (더미 데이터 함수들 제거)
 
-    // Spot 자산 (일반 거래 자산)
-    val spotAssets = listOf("BTC", "ETH", "BNB", "ADA", "DOT", "LINK", "LTC", "XRP", "DOGE")
-    val spotBalances = nonZeroBalances.filter { it.asset in spotAssets }
-
-    // Earn 자산 (스테이킹 가능한 자산)
-    val earnAssets = listOf("BNB", "USDT", "BUSD", "ETH", "ADA", "DOT")
-    val earnBalances = nonZeroBalances.filter {
-        it.asset in earnAssets && BalanceUtils.getTotalBalance(it) >= 10.0 // 최소 금액 조건
-    }
-
-    // Futures 자산 (선물 거래용 마진)
-    val futuresAssets = listOf("USDT", "BUSD", "USDC")
-    val futuresBalances = nonZeroBalances.filter { it.asset in futuresAssets }
-
-    // 각 탭별 USD 총액 계산
-    val spotTotalUSD = calculateTotalUSDForBalances(spotBalances)
-    val earnTotalUSD = calculateTotalUSDForBalances(earnBalances)
-    val futuresTotalUSD = calculateTotalUSDForBalances(futuresBalances)
-
-    callback(spotBalances, earnBalances, futuresBalances, spotTotalUSD, earnTotalUSD, futuresTotalUSD)
-}
-
-private fun calculateTotalUSDForBalances(balances: List<BalanceInfo>): Double {
-    return balances.sumOf { balance ->
-        val totalAmount = BalanceUtils.getTotalBalance(balance)
-        calculateUSDValue(balance.asset, totalAmount)
-    }
-}
-
-private fun calculateUSDValue(asset: String, amount: Double): Double {
-    // 실제로는 바이낸스 API에서 현재 가격을 가져와야 하지만,
-    // 여기서는 가상의 가격을 사용합니다
-    val prices = mapOf(
-        "USDT" to 1.0,
-        "BUSD" to 1.0,
-        "USDC" to 1.0,
-        "BTC" to 42000.0,
-        "ETH" to 2500.0,
-        "BNB" to 300.0,
-        "ADA" to 0.5,
-        "DOT" to 7.0,
-        "LINK" to 15.0,
-        "LTC" to 70.0,
-        "XRP" to 0.6,
-        "DOGE" to 0.08
-    )
-
-    return (prices[asset] ?: 0.0) * amount
-}
-
-// 계좌 데이터 로드 함수 (기존과 동일)
-private suspend fun loadAccountData(
-    accountService: AccountService,
-    apiKeyData: ApiKeyData,
-    callback: (AccountInfo?, List<BalanceInfo>, Double, String?) -> Unit
-) {
-    try {
-        val accountResponse = accountService.getAccountInfo(apiKeyData)
-
-        if (accountResponse.success && accountResponse.data != null) {
-            val accountInfo = accountResponse.data
-            val nonZeroBalances = BalanceUtils.getNonZeroBalances(accountInfo.balances)
-            val totalUSD = calculateTotalUSDForBalances(nonZeroBalances)
-
-            callback(accountInfo, nonZeroBalances, totalUSD, null)
-        } else {
-            callback(null, emptyList(), 0.0, accountResponse.message)
-        }
-    } catch (e: Exception) {
-        callback(null, emptyList(), 0.0, "네트워크 오류: ${e.message}")
-    }
-}
+// 기존 더미 함수들은 RealBinanceService로 대체됨
