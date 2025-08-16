@@ -67,18 +67,18 @@ fun UserInfoScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
                 .padding(16.dp)
-                .verticalScroll(rememberScrollState()), // 🔥 스크롤 추가!
+                .verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Spacer(modifier = Modifier.height(16.dp)) // 여백 줄임
+            Spacer(modifier = Modifier.height(16.dp))
 
-            // 프로필 이미지 - 크기 축소
+            // 프로필 이미지
             Card(
                 shape = CircleShape,
                 colors = CardDefaults.cardColors(
                     containerColor = Color(0xFF2196F3)
                 ),
-                modifier = Modifier.size(80.dp) // 120dp → 80dp로 축소
+                modifier = Modifier.size(80.dp)
             ) {
                 Box(
                     modifier = Modifier.fillMaxSize(),
@@ -88,30 +88,30 @@ fun UserInfoScreen(
                         Icons.Default.Person,
                         contentDescription = "프로필",
                         tint = Color.White,
-                        modifier = Modifier.size(40.dp) // 60dp → 40dp로 축소
+                        modifier = Modifier.size(40.dp)
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp)) // 여백 줄임
+            Spacer(modifier = Modifier.height(16.dp))
 
             // 로그인 상태에 따른 표시
             if (currentUser != null) {
                 // 로그인된 상태
                 Text(
                     currentUser!!.username,
-                    fontSize = 22.sp, // 24sp → 22sp로 축소
+                    fontSize = 22.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color(0xFF1976D2)
                 )
 
                 Text(
                     currentUser!!.email,
-                    fontSize = 15.sp, // 16sp → 15sp로 축소
+                    fontSize = 15.sp,
                     color = Color.Gray
                 )
 
-                Spacer(modifier = Modifier.height(24.dp)) // 여백 줄임
+                Spacer(modifier = Modifier.height(24.dp))
 
                 // 정보 카드들
                 UserInfoCard(
@@ -200,21 +200,21 @@ fun UserInfoScreen(
                     )
                 }
 
-                // 하단 여백 추가 (스크롤 여유 공간)
+                // 하단 여백 추가
                 Spacer(modifier = Modifier.height(32.dp))
 
             } else {
                 // 로그인되지 않은 상태
                 Text(
                     "로그인이 필요합니다",
-                    fontSize = 22.sp, // 24sp → 22sp로 축소
+                    fontSize = 22.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color(0xFF1976D2)
                 )
 
                 Text(
                     "계정에 로그인하여 모든 기능을 이용하세요",
-                    fontSize = 15.sp, // 16sp → 15sp로 축소
+                    fontSize = 15.sp,
                     color = Color.Gray
                 )
 
@@ -284,7 +284,7 @@ fun UserInfoScreen(
                     )
                 }
 
-                // 하단 여백 추가 (스크롤 여유 공간)
+                // 하단 여백 추가
                 Spacer(modifier = Modifier.height(40.dp))
             }
         }
@@ -303,7 +303,7 @@ fun UserInfoCard(
         colors = CardDefaults.cardColors(
             containerColor = Color(0xFFE3F2FD)
         ),
-        onClick = onClick  // 🔥 클릭 이벤트 연결!
+        onClick = onClick
     ) {
         Row(
             modifier = Modifier

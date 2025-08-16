@@ -41,6 +41,14 @@ fun AccountBalanceScreen(
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var totalBalanceUSD by remember { mutableStateOf(0.0) }
 
+    // 탭별 자산 분류
+    var spotBalances by remember { mutableStateOf<List<BalanceInfo>>(emptyList()) }
+    var earnBalances by remember { mutableStateOf<List<BalanceInfo>>(emptyList()) }
+    var futuresBalances by remember { mutableStateOf<List<BalanceInfo>>(emptyList()) }
+    var spotTotalUSD by remember { mutableStateOf(0.0) }
+    var earnTotalUSD by remember { mutableStateOf(0.0) }
+    var futuresTotalUSD by remember { mutableStateOf(0.0) }
+
     // API 키 상태 확인 및 계좌 정보 로드
     LaunchedEffect(Unit) {
         val keys = apiKeyService.getApiKeys()
@@ -55,6 +63,16 @@ fun AccountBalanceScreen(
                 totalBalanceUSD = total
                 errorMessage = error
                 isLoading = false
+
+                // 탭별 자산 분류
+                classifyBalancesByTab(balanceList) { spot, earn, futures, spotTotal, earnTotal, futuresTotal ->
+                    spotBalances = spot
+                    earnBalances = earn
+                    futuresBalances = futures
+                    spotTotalUSD = spotTotal
+                    earnTotalUSD = earnTotal
+                    futuresTotalUSD = futuresTotal
+                }
             }
         }
     }
@@ -86,6 +104,16 @@ fun AccountBalanceScreen(
                                 totalBalanceUSD = total
                                 errorMessage = error
                                 isLoading = false
+
+                                // 탭별 자산 재분류
+                                classifyBalancesByTab(balanceList) { spot, earn, futures, spotTotal, earnTotal, futuresTotal ->
+                                    spotBalances = spot
+                                    earnBalances = earn
+                                    futuresBalances = futures
+                                    spotTotalUSD = spotTotal
+                                    earnTotalUSD = earnTotal
+                                    futuresTotalUSD = futuresTotal
+                                }
                             }
                         }
                     }
@@ -117,6 +145,15 @@ fun AccountBalanceScreen(
                                         totalBalanceUSD = total
                                         errorMessage = error
                                         isLoading = false
+
+                                        classifyBalancesByTab(balanceList) { spot, earn, futures, spotTotal, earnTotal, futuresTotal ->
+                                            spotBalances = spot
+                                            earnBalances = earn
+                                            futuresBalances = futures
+                                            spotTotalUSD = spotTotal
+                                            earnTotalUSD = earnTotal
+                                            futuresTotalUSD = futuresTotal
+                                        }
                                     }
                                 }
                             }
@@ -124,9 +161,14 @@ fun AccountBalanceScreen(
                     )
                 }
                 accountInfo != null -> {
-                    AccountContentSection(
+                    EnhancedAccountContentSection(
                         accountInfo = accountInfo!!,
-                        balances = balances,
+                        spotBalances = spotBalances,
+                        earnBalances = earnBalances,
+                        futuresBalances = futuresBalances,
+                        spotTotalUSD = spotTotalUSD,
+                        earnTotalUSD = earnTotalUSD,
+                        futuresTotalUSD = futuresTotalUSD,
                         isTestnet = isTestnet
                     )
                 }
@@ -214,6 +256,285 @@ private fun AccountBalanceHeader(
     }
 }
 
+@Composable
+private fun EnhancedAccountContentSection(
+    accountInfo: AccountInfo,
+    spotBalances: List<BalanceInfo>,
+    earnBalances: List<BalanceInfo>,
+    futuresBalances: List<BalanceInfo>,
+    spotTotalUSD: Double,
+    earnTotalUSD: Double,
+    futuresTotalUSD: Double,
+    isTestnet: Boolean
+) {
+    var selectedTab by remember { mutableIntStateOf(0) }
+
+    Column {
+        // 깔끔한 탭 메뉴 (제목만)
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = Color.White
+            )
+        ) {
+            TabRow(
+                selectedTabIndex = selectedTab,
+                modifier = Modifier.fillMaxWidth(),
+                containerColor = Color.White,
+                contentColor = Color(0xFF1976D2)
+            ) {
+                val tabTitles = listOf("Spot", "Earn", "Futures")
+
+                tabTitles.forEachIndexed { index, title ->
+                    Tab(
+                        text = {
+                            Text(
+                                title,
+                                fontWeight = if (selectedTab == index) FontWeight.Bold else FontWeight.Normal,
+                                fontSize = 16.sp
+                            )
+                        },
+                        selected = selectedTab == index,
+                        onClick = { selectedTab = index },
+                        selectedContentColor = Color(0xFF1976D2),
+                        unselectedContentColor = Color.Gray
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // 탭별 컨텐츠
+        when (selectedTab) {
+            0 -> EnhancedSpotBalanceContent(spotBalances, spotTotalUSD)
+            1 -> EnhancedEarnBalanceContent(earnBalances, earnTotalUSD)
+            2 -> EnhancedFuturesBalanceContent(futuresBalances, futuresTotalUSD)
+        }
+    }
+}
+
+@Composable
+private fun EnhancedBalanceListCard(
+    title: String,
+    balances: List<BalanceInfo>,
+    totalUSD: Double,
+    cardColor: Color = Color.White,
+    titleColor: Color = Color(0xFF1976D2)
+) {
+    val formatter = DecimalFormat("$#,##0.00")
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = cardColor
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp)
+        ) {
+            // 헤더 (제목 + 총 금액)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "$title (${balances.size}개)",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = titleColor
+                )
+
+                if (totalUSD > 0) {
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = Color(0xFFE8F5E8)
+                        )
+                    ) {
+                        Text(
+                            "총 ${formatter.format(totalUSD)}",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF2E7D32),
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
+                }
+            }
+
+            if (balances.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(12.dp))
+
+                LazyColumn(
+                    modifier = Modifier.heightIn(max = 300.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    items(balances) { balance ->
+                        EnhancedBalanceRowComponent(balance)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun EnhancedSpotBalanceContent(balances: List<BalanceInfo>, totalUSD: Double) {
+    if (balances.isNotEmpty()) {
+        EnhancedBalanceListCard(
+            title = "Spot 자산",
+            balances = balances,
+            totalUSD = totalUSD,
+            cardColor = Color(0xFFF3E5F5),
+            titleColor = Color(0xFF7B1FA2)
+        )
+    } else {
+        EmptyBalanceCard("Spot 자산이 없습니다", "💰")
+    }
+}
+
+@Composable
+private fun EnhancedEarnBalanceContent(balances: List<BalanceInfo>, totalUSD: Double) {
+    if (balances.isNotEmpty()) {
+        EnhancedBalanceListCard(
+            title = "Earn 자산",
+            balances = balances,
+            totalUSD = totalUSD,
+            cardColor = Color(0xFFE8F5E8),
+            titleColor = Color(0xFF2E7D32)
+        )
+    } else {
+        EmptyBalanceCard("Earn 자산이 없습니다", "🌱")
+    }
+}
+
+@Composable
+private fun EnhancedFuturesBalanceContent(balances: List<BalanceInfo>, totalUSD: Double) {
+    if (balances.isNotEmpty()) {
+        EnhancedBalanceListCard(
+            title = "Futures 자산",
+            balances = balances,
+            totalUSD = totalUSD,
+            cardColor = Color(0xFFFFEBEE),
+            titleColor = Color(0xFFC62828)
+        )
+    } else {
+        EmptyBalanceCard("Futures 자산이 없습니다", "📈")
+    }
+}
+
+@Composable
+private fun EmptyBalanceCard(message: String, emoji: String = "💼") {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = Color(0xFFFFF3E0)
+        )
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(32.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    emoji,
+                    fontSize = 32.sp
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    message,
+                    fontSize = 16.sp,
+                    color = Color(0xFFE65100)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun EnhancedBalanceRowComponent(balance: BalanceInfo) {
+    val formatter = DecimalFormat("#,##0.########")
+    val totalAmount = BalanceUtils.getTotalBalance(balance)
+    val lockedAmount = balance.locked.toDoubleOrNull() ?: 0.0
+    val freeAmount = balance.free.toDoubleOrNull() ?: 0.0
+
+    // 가상의 USD 가격 (실제로는 API에서 가져와야 함)
+    val usdValue = calculateUSDValue(balance.asset, totalAmount)
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = Color(0xFFF8F9FA)
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // 코인 정보
+            Column(
+                modifier = Modifier.weight(2f)
+            ) {
+                Text(
+                    balance.asset,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF1976D2)
+                )
+                if (usdValue > 0) {
+                    Text(
+                        "$${String.format("%.2f", usdValue)}",
+                        fontSize = 10.sp,
+                        color = Color(0xFF4CAF50)
+                    )
+                }
+            }
+
+            // 잔고 정보
+            Column(
+                horizontalAlignment = Alignment.End,
+                modifier = Modifier.weight(3f)
+            ) {
+                // 총 잔고
+                Text(
+                    formatter.format(totalAmount),
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF2E7D32)
+                )
+
+                // 자유 자산
+                if (freeAmount > 0) {
+                    Text(
+                        "자유: ${formatter.format(freeAmount)}",
+                        fontSize = 10.sp,
+                        color = Color(0xFF388E3C)
+                    )
+                }
+
+                // 잠긴 자산
+                if (lockedAmount > 0) {
+                    Text(
+                        "잠김: ${formatter.format(lockedAmount)}",
+                        fontSize = 10.sp,
+                        color = Color(0xFFFF9800)
+                    )
+                }
+            }
+        }
+    }
+}
+
+// 기존 컴포넌트들 (변경 없음)
 @Composable
 private fun NoApiKeyContentSection(onShowSecuritySettings: () -> Unit) {
     Column(
@@ -366,203 +687,66 @@ private fun EmptyContentSection() {
     }
 }
 
-@Composable
-private fun AccountContentSection(
-    accountInfo: AccountInfo,
+// 데이터 클래스 (사용하지 않으므로 제거)
+
+// 헬퍼 함수들
+private fun classifyBalancesByTab(
     balances: List<BalanceInfo>,
-    isTestnet: Boolean
+    callback: (List<BalanceInfo>, List<BalanceInfo>, List<BalanceInfo>, Double, Double, Double) -> Unit
 ) {
-    var selectedTab by remember { mutableIntStateOf(0) }
-    val tabs = listOf("Spot", "Earn", "Futures")
+    val nonZeroBalances = BalanceUtils.getNonZeroBalances(balances)
 
-    Column {
-        // 탭 메뉴
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(
-                containerColor = Color.White
-            )
-        ) {
-            TabRow(
-                selectedTabIndex = selectedTab,
-                modifier = Modifier.fillMaxWidth(),
-                containerColor = Color.White,
-                contentColor = Color(0xFF1976D2)
-            ) {
-                tabs.forEachIndexed { index, title ->
-                    Tab(
-                        text = {
-                            Text(
-                                title,
-                                fontWeight = if (selectedTab == index) FontWeight.Bold else FontWeight.Normal
-                            )
-                        },
-                        selected = selectedTab == index,
-                        onClick = { selectedTab = index },
-                        selectedContentColor = Color(0xFF1976D2),
-                        unselectedContentColor = Color.Gray
-                    )
-                }
-            }
-        }
+    // Spot 자산 (일반 거래 자산)
+    val spotAssets = listOf("BTC", "ETH", "BNB", "ADA", "DOT", "LINK", "LTC", "XRP", "DOGE")
+    val spotBalances = nonZeroBalances.filter { it.asset in spotAssets }
 
-        Spacer(modifier = Modifier.height(12.dp))
+    // Earn 자산 (스테이킹 가능한 자산)
+    val earnAssets = listOf("BNB", "USDT", "BUSD", "ETH", "ADA", "DOT")
+    val earnBalances = nonZeroBalances.filter {
+        it.asset in earnAssets && BalanceUtils.getTotalBalance(it) >= 10.0 // 최소 금액 조건
+    }
 
-        // 탭별 컨텐츠
-        when (selectedTab) {
-            0 -> SpotBalanceContent(balances)
-            1 -> EarnBalanceContent(balances)
-            2 -> FuturesBalanceContent(balances)
-        }
+    // Futures 자산 (선물 거래용 마진)
+    val futuresAssets = listOf("USDT", "BUSD", "USDC")
+    val futuresBalances = nonZeroBalances.filter { it.asset in futuresAssets }
+
+    // 각 탭별 USD 총액 계산
+    val spotTotalUSD = calculateTotalUSDForBalances(spotBalances)
+    val earnTotalUSD = calculateTotalUSDForBalances(earnBalances)
+    val futuresTotalUSD = calculateTotalUSDForBalances(futuresBalances)
+
+    callback(spotBalances, earnBalances, futuresBalances, spotTotalUSD, earnTotalUSD, futuresTotalUSD)
+}
+
+private fun calculateTotalUSDForBalances(balances: List<BalanceInfo>): Double {
+    return balances.sumOf { balance ->
+        val totalAmount = BalanceUtils.getTotalBalance(balance)
+        calculateUSDValue(balance.asset, totalAmount)
     }
 }
 
-@Composable
-private fun BalanceListCard(title: String, balances: List<BalanceInfo>) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = Color.White
-        )
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp)
-        ) {
-            Text(
-                "$title (${balances.size}개)",
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color(0xFF1976D2)
-            )
+private fun calculateUSDValue(asset: String, amount: Double): Double {
+    // 실제로는 바이낸스 API에서 현재 가격을 가져와야 하지만,
+    // 여기서는 가상의 가격을 사용합니다
+    val prices = mapOf(
+        "USDT" to 1.0,
+        "BUSD" to 1.0,
+        "USDC" to 1.0,
+        "BTC" to 42000.0,
+        "ETH" to 2500.0,
+        "BNB" to 300.0,
+        "ADA" to 0.5,
+        "DOT" to 7.0,
+        "LINK" to 15.0,
+        "LTC" to 70.0,
+        "XRP" to 0.6,
+        "DOGE" to 0.08
+    )
 
-            Spacer(modifier = Modifier.height(12.dp))
-
-            LazyColumn(
-                modifier = Modifier.heightIn(max = 300.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                items(balances) { balance ->
-                    BalanceRowComponent(balance)
-                }
-            }
-        }
-    }
+    return (prices[asset] ?: 0.0) * amount
 }
 
-@Composable
-private fun SpotBalanceContent(balances: List<BalanceInfo>) {
-    val spotBalances = BalanceUtils.getNonZeroBalances(balances)
-
-    if (spotBalances.isNotEmpty()) {
-        BalanceListCard("Spot 자산", spotBalances)
-    } else {
-        EmptyBalanceCard("Spot 자산이 없습니다")
-    }
-}
-
-@Composable
-private fun EarnBalanceContent(balances: List<BalanceInfo>) {
-    // Earn 관련 자산들 (예: 스테이킹, 세이빙스 등)
-    val earnBalances = balances.filter {
-        it.asset in listOf("BNB", "USDT", "BUSD") // 예시로 Earn 가능한 자산들
-    }.let { BalanceUtils.getNonZeroBalances(it) }
-
-    if (earnBalances.isNotEmpty()) {
-        BalanceListCard("Earn 자산", earnBalances)
-    } else {
-        EmptyBalanceCard("Earn 자산이 없습니다")
-    }
-}
-
-@Composable
-private fun FuturesBalanceContent(balances: List<BalanceInfo>) {
-    // Futures 관련 자산들
-    val futuresBalances = balances.filter {
-        it.asset in listOf("USDT", "BUSD") // 예시로 Futures 마진으로 사용 가능한 자산들
-    }.let { BalanceUtils.getNonZeroBalances(it) }
-
-    if (futuresBalances.isNotEmpty()) {
-        BalanceListCard("Futures 자산", futuresBalances)
-    } else {
-        EmptyBalanceCard("Futures 자산이 없습니다")
-    }
-}
-
-@Composable
-private fun EmptyBalanceCard(message: String) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = Color(0xFFFFF3E0)
-        )
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(32.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                message,
-                fontSize = 16.sp,
-                color = Color(0xFFE65100)
-            )
-        }
-    }
-}
-
-@Composable
-private fun BalanceRowComponent(balance: BalanceInfo) {
-    val formatter = DecimalFormat("#,##0.########")
-    val totalAmount = BalanceUtils.getTotalBalance(balance)
-    val lockedAmount = balance.locked.toDoubleOrNull() ?: 0.0
-
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = Color(0xFFF5F5F5)
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // 코인 이름
-            Text(
-                balance.asset,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color(0xFF1976D2)
-            )
-
-            // 잔고 정보
-            Column(
-                horizontalAlignment = Alignment.End
-            ) {
-                Text(
-                    formatter.format(totalAmount),
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = Color(0xFF2E7D32)
-                )
-
-                if (lockedAmount > 0) {
-                    Text(
-                        "잠김: ${formatter.format(lockedAmount)}",
-                        fontSize = 10.sp,
-                        color = Color(0xFFFF9800)
-                    )
-                }
-            }
-        }
-    }
-}
-
-// 계좌 데이터 로드 함수
+// 계좌 데이터 로드 함수 (기존과 동일)
 private suspend fun loadAccountData(
     accountService: AccountService,
     apiKeyData: ApiKeyData,
@@ -574,7 +758,7 @@ private suspend fun loadAccountData(
         if (accountResponse.success && accountResponse.data != null) {
             val accountInfo = accountResponse.data
             val nonZeroBalances = BalanceUtils.getNonZeroBalances(accountInfo.balances)
-            val totalUSD = BalanceUtils.calculateTotalUSDValue(nonZeroBalances)
+            val totalUSD = calculateTotalUSDForBalances(nonZeroBalances)
 
             callback(accountInfo, nonZeroBalances, totalUSD, null)
         } else {
