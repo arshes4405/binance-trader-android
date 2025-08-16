@@ -240,18 +240,43 @@ fun AdvancedCciStrategyScreen(
                         isRunning = true
                         showResults = false
                         CoroutineScope(Dispatchers.Main).launch {
+                            Log.d("AdvancedCciStrategy", "🚀 실제 바이낸스 데이터 백테스팅 시작")
+
+                            // 네트워크 접근 가능 여부 확인
                             try {
-                                // 실제 바이낸스 데이터를 이용한 백테스팅
                                 val realDataEngine = RealDataBacktestEngine()
+                                Log.d("AdvancedCciStrategy", "📡 백테스팅 엔진 생성 완료")
+
                                 backtestResult = realDataEngine.runRealDataBacktest(settings)
+                                Log.d("AdvancedCciStrategy", "✅ 백테스팅 실행 완료")
+
+                                // 결과 검증
+                                backtestResult?.let { result ->
+                                    Log.d("AdvancedCciStrategy", "📊 결과 확인: ${result.trades.size}개 거래")
+                                    if (result.trades.isNotEmpty()) {
+                                        result.trades.forEachIndexed { index, trade ->
+                                            Log.d("AdvancedCciStrategy", "거래 #${index + 1}: ${trade.type}, 시간: ${trade.timestamp}")
+                                            Log.d("AdvancedCciStrategy", "  진입CCI: ${trade.entryCCI}, 이전CCI: ${trade.previousCCI}")
+                                            Log.d("AdvancedCciStrategy", "  청산이유: ${trade.exitReason}, 수익: ${trade.profit}")
+                                        }
+                                    }
+                                }
+
                                 isRunning = false
                                 showResults = true
+
                             } catch (e: Exception) {
-                                Log.e("AdvancedCciStrategy", "백테스팅 실행 중 오류: ${e.message}")
-                                // 오류 발생시 더미 데이터로 폴백
-                                backtestResult = createDummyBacktestResult()
+                                Log.e("AdvancedCciStrategy", "❌ 백테스팅 실행 중 오류")
+                                Log.e("AdvancedCciStrategy", "오류 메시지: ${e.message}")
+                                Log.e("AdvancedCciStrategy", "오류 타입: ${e.javaClass.simpleName}")
+                                e.printStackTrace()
+
+                                // 임시로 더미 데이터 사용 중단하고 오류 표시
                                 isRunning = false
-                                showResults = true
+                                showResults = false
+
+                                // 사용자에게 오류 알림 (임시)
+                                Log.e("AdvancedCciStrategy", "🚨 실제 데이터 로드 실패 - 네트워크나 API 문제일 수 있음")
                             }
                         }
                     },
@@ -529,7 +554,8 @@ fun BacktestSettingsCard(
                                 "• 테스트 기간: ${settings.testPeriod}\n" +
                                 "• 시드머니: ${DecimalFormat("#,###").format(settings.seedMoney)}\n" +
                                 "• 수수료율: ${settings.feeRate}%\n" +
-                                "• 데이터 소스: 바이낸스 실시간 API",
+                                "• 데이터 소스: 바이낸스 실시간 API\n" +
+                                "• 시간대: 한국시간(KST) 표시",
                         fontSize = 11.sp,
                         color = Color(0xFF1565C0),
                         lineHeight = 14.sp
@@ -641,7 +667,8 @@ fun BacktestProgressCard() {
                         "1️⃣ 바이낸스 API에서 실제 가격 데이터 수집\n" +
                                 "2️⃣ CCI 지표 계산 (14기간 평균)\n" +
                                 "3️⃣ 물타기 전략 시뮬레이션 실행\n" +
-                                "4️⃣ 수익률 및 위험도 분석",
+                                "4️⃣ 수익률 및 위험도 분석\n" +
+                                "🔍 진입 조건: 롱(-110→-100), 숏(+110→+100)",
                         fontSize = 10.sp,
                         color = Color(0xFF8E24AA),
                         lineHeight = 14.sp
@@ -797,37 +824,50 @@ fun ResultMetric(label: String, value: String, color: Color) {
     }
 }
 
-// 더미 데이터 생성 함수 (실제로는 백테스팅 엔진에서 생성)
+// 더미 데이터 생성 함수 (CCI 값 포함) - 네트워크 문제시 임시 사용
 fun createDummyBacktestResult(): CciBacktestResult {
+    Log.d("AdvancedCciStrategy", "🔄 더미 데이터 생성 중 (CCI 값 포함)")
+
     val trades = listOf(
         TradeResult(
             type = "LONG",
-            entryPrice = 45000.0,
-            exitPrice = 46350.0,
-            amount = 0.02,
-            profit = 27.0,
-            fee = 3.6,
-            timestamp = "2024-01-15 14:30:00"
+            entryPrice = 70000.0,
+            exitPrice = 72800.0,
+            amount = 2000.0,
+            profit = 80.0,
+            fee = 5.6,
+            timestamp = "06-06 05:00", // 6월 6일 5시 (UTC) = 14시 (KST)
+            entryCCI = -95.3,      // 진입시 CCI (롱 조건 만족)
+            previousCCI = -118.7,  // 이전 CCI (-110 아래)
+            exitReason = "PROFIT"
         ),
         TradeResult(
             type = "SHORT",
-            entryPrice = 46000.0,
-            exitPrice = 45200.0,
-            amount = 0.025,
-            profit = 20.0,
-            fee = 4.6,
-            timestamp = "2024-01-16 09:15:00"
+            entryPrice = 72000.0,
+            exitPrice = 71200.0,
+            amount = 2000.0,
+            profit = 22.4,
+            fee = 5.76,
+            timestamp = "06-06 09:15", // 잘못된 시그널 예시
+            entryCCI = 85.2,       // 진입시 CCI (숏 조건 불만족!)
+            previousCCI = 125.4,   // 이전 CCI (+110 위)
+            exitReason = "PROFIT"
         ),
         TradeResult(
             type = "LONG",
-            entryPrice = 44800.0,
-            exitPrice = 43920.0,
-            amount = 0.03,
-            profit = -26.4,
-            fee = 5.34,
-            timestamp = "2024-01-17 16:45:00"
+            entryPrice = 69500.0,
+            exitPrice = 68200.0,
+            amount = 2040.0, // 이전 수익으로 시드머니 증가
+            profit = -52.0,
+            fee = 8.16,
+            timestamp = "06-07 02:45",
+            entryCCI = -98.1,      // 진입시 CCI (롱 조건 만족)
+            previousCCI = -112.8,  // 이전 CCI (-110 아래)
+            exitReason = "STOP_LOSS"
         )
     )
+
+    Log.d("AdvancedCciStrategy", "✅ 더미 데이터 생성 완료: ${trades.size}개 거래 (실제같은 CCI 값 포함)")
 
     return CciBacktestResult(
         totalTrades = trades.size,
@@ -835,10 +875,10 @@ fun createDummyBacktestResult(): CciBacktestResult {
         losingTrades = trades.count { it.profit < 0 },
         totalProfit = trades.sumOf { it.profit },
         totalFees = trades.sumOf { it.fee },
-        maxDrawdown = 8.5,
-        finalSeedMoney = 10521.0,
+        maxDrawdown = 7.5,
+        finalSeedMoney = 10050.4,
         winRate = 66.7,
-        profitFactor = 1.24,
+        profitFactor = 1.96,
         trades = trades
     )
 }

@@ -36,7 +36,10 @@ data class TradeResult(
     val amount: Double,
     val profit: Double,
     val fee: Double,
-    val timestamp: String
+    val timestamp: String,
+    val entryCCI: Double = 0.0,      // 👈 추가
+    val previousCCI: Double = 0.0,   // 👈 추가
+    val exitReason: String = "PROFIT" // 👈 추가
 )
 
 // 백테스팅 엔진에서 사용하는 데이터 클래스들
@@ -72,5 +75,8 @@ data class TradeExecution(
     val netProfit: Double,
     val exitType: String,
     val stages: Int,
-    val timestamp: Long
+    val timestamp: Long,
+    val entryCCI: Double = 0.0,      // 👈 추가
+    val previousCCI: Double = 0.0,   // 👈 추가
+    val exitCCI: Double = 0.0        // 👈 추가
 )

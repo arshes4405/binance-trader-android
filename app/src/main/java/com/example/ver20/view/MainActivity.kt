@@ -191,7 +191,7 @@ fun BinanceTraderApp() {
                     )
                     2 -> BacktestingScreen(modifier = Modifier.padding(paddingValues)) // 새로 추가
                     3 -> AnalysisScreen(modifier = Modifier.padding(paddingValues))
-                    4 -> TradeHistoryScreen(modifier = Modifier.padding(paddingValues))
+                   // 4 -> TradeHistoryScreen(modifier = Modifier.padding(paddingValues))
                 }
             }
         }
