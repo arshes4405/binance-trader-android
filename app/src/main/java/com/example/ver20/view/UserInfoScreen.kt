@@ -1,7 +1,9 @@
 package com.example.ver20.view
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -22,7 +24,8 @@ import com.example.ver20.dao.UserData
 fun UserInfoScreen(
     onBackClick: () -> Unit,
     onLoginClick: () -> Unit = {},
-    onCreateAccountClick: () -> Unit = {}
+    onCreateAccountClick: () -> Unit = {},
+    onSecuritySettingsClick: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val userService = UserService()
@@ -63,65 +66,96 @@ fun UserInfoScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+                .padding(16.dp)
+                .verticalScroll(rememberScrollState())
         ) {
-            Spacer(modifier = Modifier.height(32.dp))
-
-            // 프로필 이미지
-            Card(
-                shape = CircleShape,
-                colors = CardDefaults.cardColors(
-                    containerColor = Color(0xFF2196F3)
-                ),
-                modifier = Modifier.size(120.dp)
-            ) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        Icons.Default.Person,
-                        contentDescription = "프로필",
-                        tint = Color.White,
-                        modifier = Modifier.size(60.dp)
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
             // 로그인 상태에 따른 표시
             if (currentUser != null) {
-                // 로그인된 상태
-                Text(
-                    currentUser!!.username,
-                    fontSize = 24.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF1976D2)
-                )
+                // 프로필 영역
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // 프로필 이미지 (작게 수정)
+                    Card(
+                        shape = CircleShape,
+                        colors = CardDefaults.cardColors(
+                            containerColor = Color(0xFF2196F3)
+                        ),
+                        modifier = Modifier.size(80.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Default.Person,
+                                contentDescription = "프로필",
+                                tint = Color.White,
+                                modifier = Modifier.size(40.dp)
+                            )
+                        }
+                    }
 
-                Text(
-                    currentUser!!.email,
-                    fontSize = 16.sp,
-                    color = Color.Gray
-                )
+                    Spacer(modifier = Modifier.width(16.dp))
 
-                Spacer(modifier = Modifier.height(32.dp))
+                    // 사용자 정보
+                    Column(
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(
+                            currentUser!!.username,
+                            fontSize = 24.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF1976D2)
+                        )
 
-                // 정보 카드들
-                UserInfoCard(
-                    icon = Icons.Default.AccountBalance,
-                    title = "계좌 정보",
-                    subtitle = "잔고 및 자산 조회"
-                )
+                        Text(
+                            currentUser!!.email,
+                            fontSize = 16.sp,
+                            color = Color.Gray
+                        )
 
-                Spacer(modifier = Modifier.height(12.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
 
+                        // 로그아웃 버튼 (세로 배치)
+                        Button(
+                            onClick = {
+                                userService.logout(context)
+                                currentUser = null
+                            },
+                            modifier = Modifier.height(32.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFFF44336),
+                                contentColor = Color.White
+                            ),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.ExitToApp,
+                                contentDescription = null,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                "로그아웃",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                // 기능 카드들
                 UserInfoCard(
                     icon = Icons.Default.Security,
                     title = "보안 설정",
-                    subtitle = "API 키 및 보안 관리"
+                    subtitle = "API 키 및 보안 관리",
+                    onClick = onSecuritySettingsClick
                 )
 
                 Spacer(modifier = Modifier.height(12.dp))
@@ -129,7 +163,8 @@ fun UserInfoScreen(
                 UserInfoCard(
                     icon = Icons.Default.Notifications,
                     title = "알림 설정",
-                    subtitle = "가격 알림 및 거래 알림"
+                    subtitle = "가격 알림 및 거래 알림",
+                    onClick = { /* TODO: 알림 설정 화면으로 이동 */ }
                 )
 
                 Spacer(modifier = Modifier.height(12.dp))
@@ -137,88 +172,93 @@ fun UserInfoScreen(
                 UserInfoCard(
                     icon = Icons.Default.Settings,
                     title = "앱 설정",
-                    subtitle = "테마 및 기본 설정"
+                    subtitle = "테마 및 기본 설정",
+                    onClick = { /* TODO: 앱 설정 화면으로 이동 */ }
                 )
 
-                Spacer(modifier = Modifier.weight(1f))
+                Spacer(modifier = Modifier.height(12.dp))
 
-                // 로그아웃 버튼
-                Button(
-                    onClick = {
-                        userService.logout(context)
-                        currentUser = null
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(50.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFFF44336),
-                        contentColor = Color.White
-                    )
-                ) {
-                    Icon(Icons.Default.ExitToApp, contentDescription = null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("로그아웃", fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                }
+                UserInfoCard(
+                    icon = Icons.Default.Help,
+                    title = "도움말 및 지원",
+                    subtitle = "사용법 및 문의하기",
+                    onClick = { /* TODO: 도움말 화면으로 이동 */ }
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                UserInfoCard(
+                    icon = Icons.Default.Info,
+                    title = "앱 정보",
+                    subtitle = "버전 정보 및 라이선스",
+                    onClick = { /* TODO: 앱 정보 화면으로 이동 */ }
+                )
+
+                Spacer(modifier = Modifier.height(24.dp))
             } else {
                 // 로그인되지 않은 상태
-                Text(
-                    "로그인이 필요합니다",
-                    fontSize = 24.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF1976D2)
-                )
-
-                Text(
-                    "계정에 로그인하여 모든 기능을 이용하세요",
-                    fontSize = 16.sp,
-                    color = Color.Gray
-                )
-
-                Spacer(modifier = Modifier.height(32.dp))
-
-                // 로그인 버튼
-                Button(
-                    onClick = onLoginClick,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(56.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFF2196F3),
-                        contentColor = Color.White
-                    )
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Icon(Icons.Default.Login, contentDescription = null)
-                    Spacer(modifier = Modifier.width(8.dp))
+                    Spacer(modifier = Modifier.height(32.dp))
+
                     Text(
-                        "로그인",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold
+                        "로그인이 필요합니다",
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF1976D2)
                     )
-                }
 
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // 계정 생성 버튼
-                OutlinedButton(
-                    onClick = onCreateAccountClick,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(56.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = Color(0xFF2196F3)
-                    )
-                ) {
-                    Icon(Icons.Default.PersonAdd, contentDescription = null)
-                    Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        "계정 만들기",
+                        "계정에 로그인하여 모든 기능을 이용하세요",
                         fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold
+                        color = Color.Gray
                     )
-                }
 
-                Spacer(modifier = Modifier.weight(1f))
+                    Spacer(modifier = Modifier.height(32.dp))
+
+                    // 로그인 버튼
+                    Button(
+                        onClick = onLoginClick,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(56.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF2196F3),
+                            contentColor = Color.White
+                        )
+                    ) {
+                        Icon(Icons.Default.Login, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            "로그인",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // 계정 생성 버튼
+                    OutlinedButton(
+                        onClick = onCreateAccountClick,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(56.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = Color(0xFF2196F3)
+                        )
+                    ) {
+                        Icon(Icons.Default.PersonAdd, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            "계정 만들기",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
             }
         }
     }
@@ -228,14 +268,15 @@ fun UserInfoScreen(
 fun UserInfoCard(
     icon: ImageVector,
     title: String,
-    subtitle: String
+    subtitle: String,
+    onClick: () -> Unit = {}
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
             containerColor = Color(0xFFE3F2FD)
         ),
-        onClick = { /* TODO: 각 항목별 기능 구현 */ }
+        onClick = onClick
     ) {
         Row(
             modifier = Modifier

@@ -41,6 +41,7 @@ fun BinanceTraderApp() {
     var showUserInfo by remember { mutableStateOf(false) }
     var showCreateAccount by remember { mutableStateOf(false) }
     var showLogin by remember { mutableStateOf(false) }
+    var showSecuritySettings by remember { mutableStateOf(false) }
 
     val tabs = listOf(
         TabItem("가격조회", Icons.Default.Search),
@@ -50,6 +51,11 @@ fun BinanceTraderApp() {
     )
 
     when {
+        showSecuritySettings -> {
+            SecuritySettingsScreen(
+                onBackClick = { showSecuritySettings = false }
+            )
+        }
         showLogin -> {
             LoginScreen(
                 onBackClick = { showLogin = false },
@@ -82,6 +88,10 @@ fun BinanceTraderApp() {
                 onCreateAccountClick = {
                     showUserInfo = false
                     showCreateAccount = true
+                },
+                onSecuritySettingsClick = {
+                    showUserInfo = false
+                    showSecuritySettings = true
                 }
             )
         }
@@ -170,7 +180,10 @@ fun BinanceTraderApp() {
                         modifier = Modifier.padding(paddingValues),
                         onShowCreateAccount = { showCreateAccount = true }
                     )
-                    1 -> AccountScreen(modifier = Modifier.padding(paddingValues))
+                    1 -> AccountBalanceScreen(
+                        modifier = Modifier.padding(paddingValues),
+                        onShowSecuritySettings = { showSecuritySettings = true }
+                    )
                     2 -> AnalysisScreen(modifier = Modifier.padding(paddingValues))
                     3 -> TradeHistoryScreen(modifier = Modifier.padding(paddingValues))
                 }
@@ -178,6 +191,7 @@ fun BinanceTraderApp() {
         }
     }
 }
+
 data class TabItem(
     val title: String,
     val icon: ImageVector
