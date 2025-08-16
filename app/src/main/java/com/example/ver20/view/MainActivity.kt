@@ -51,11 +51,6 @@ fun BinanceTraderApp() {
     )
 
     when {
-        showSecuritySettings -> {
-            SecuritySettingsScreen(
-                onBackClick = { showSecuritySettings = false }
-            )
-        }
         showLogin -> {
             LoginScreen(
                 onBackClick = { showLogin = false },
@@ -88,11 +83,12 @@ fun BinanceTraderApp() {
                 onCreateAccountClick = {
                     showUserInfo = false
                     showCreateAccount = true
-                },
-                onSecuritySettingsClick = {
-                    showUserInfo = false
-                    showSecuritySettings = true
                 }
+            )
+        }
+        showSecuritySettings -> {
+            SecuritySettingsScreen(
+                onBackClick = { showSecuritySettings = false }
             )
         }
         else -> {

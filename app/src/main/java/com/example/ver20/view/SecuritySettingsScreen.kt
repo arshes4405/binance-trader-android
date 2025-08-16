@@ -1,9 +1,9 @@
 package com.example.ver20.view
 
+import android.widget.Toast
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -11,76 +11,46 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import android.widget.Toast
 import com.example.ver20.dao.ApiKeyService
-import kotlinx.coroutines.launch
+import com.example.ver20.dao.ApiKeyData
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SecuritySettingsScreen(
-    onBackClick: () -> Unit
+    onBackClick: () -> Unit = {}
 ) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
     val apiKeyService = remember { ApiKeyService(context) }
 
-    // API 키 상태
+    // 상태 변수들
     var apiKey by remember { mutableStateOf("") }
     var secretKey by remember { mutableStateOf("") }
+    var isTestnet by remember { mutableStateOf(true) }
     var showApiKey by remember { mutableStateOf(false) }
     var showSecretKey by remember { mutableStateOf(false) }
-    var isTestMode by remember { mutableStateOf(true) } // 테스트넷/메인넷 토글
     var isLoading by remember { mutableStateOf(false) }
-    var validationStatus by remember { mutableStateOf("") }
+    var hasExistingKeys by remember { mutableStateOf(false) }
+    var currentKeyData by remember { mutableStateOf<ApiKeyData?>(null) }
 
-    // 설정 상태
-    var autoLockEnabled by remember { mutableStateOf(false) }
-    var biometricEnabled by remember { mutableStateOf(false) }
-    var notificationSecurity by remember { mutableStateOf(true) }
-
-    // 저장된 API 키 불러오기
+    // 기존 API 키 정보 로드
     LaunchedEffect(Unit) {
-        val savedApiKeys = apiKeyService.getApiKeys()
-        if (savedApiKeys != null) {
-            apiKey = savedApiKeys.apiKey
-            secretKey = savedApiKeys.secretKey
-            isTestMode = savedApiKeys.isTestnet
+        val existingKeys = apiKeyService.getApiKeys()
+        hasExistingKeys = existingKeys != null
+        currentKeyData = existingKeys
 
-            if (savedApiKeys.isValid) {
-                validationStatus = "✅ 검증됨 (${formatTime(savedApiKeys.lastValidated)})"
-            } else {
-                validationStatus = "⚠️ 미검증"
-            }
-        } else {
-            // 저장된 키가 없고 테스트넷 모드일 때 기본값 설정
-            if (isTestMode) {
-                apiKey = "aVr5Y9fwI8bSGMAgL49vg4nFBBJDIwk8ZNDDhwJMNTgtAe3KsOAMJV11nlIMQ6lN"
-                secretKey = "MouGQp2UmZ8Jw4C9uDq6QshweTCiSmLNiQEGK9zKdHkjRm66Izcippxtsm7Ptmvt"
-                validationStatus = "🧪 테스트넷 기본 키 로드됨"
-            }
-        }
-    }
-
-    // 테스트넷/메인넷 토글 변경 시 처리
-    LaunchedEffect(isTestMode) {
-        if (isTestMode && apiKey.isEmpty() && secretKey.isEmpty()) {
-            // 테스트넷으로 변경 시 기본 키 설정
-            apiKey = "aVr5Y9fwI8bSGMAgL49vg4nFBBJDIwk8ZNDDhwJMNTgtAe3KsOAMJV11nlIMQ6lN"
-            secretKey = "MouGQp2UmZ8Jw4C9uDq6QshweTCiSmLNiQEGK9zKdHkjRm66Izcippxtsm7Ptmvt"
-            validationStatus = "🧪 테스트넷 기본 키 로드됨"
-        } else if (!isTestMode && apiKey == "aVr5Y9fwI8bSGMAgL49vg4nFBBJDIwk8ZNDDhwJMNTgtAe3KsOAMJV11nlIMQ6lN") {
-            // 메인넷으로 변경 시 테스트넷 키라면 초기화
-            apiKey = ""
-            secretKey = ""
-            validationStatus = "⚠️ 메인넷 키를 입력해주세요"
+        if (existingKeys != null) {
+            isTestnet = existingKeys.isTestnet
+            // 보안상 실제 키는 표시하지 않고 마스킹 처리
+            apiKey = "*".repeat(20)
+            secretKey = "*".repeat(20)
         }
     }
 
@@ -89,7 +59,7 @@ fun SecuritySettingsScreen(
             TopAppBar(
                 title = {
                     Text(
-                        "보안 설정",
+                        "API 키 설정",
                         fontWeight = FontWeight.Bold,
                         color = Color.White
                     )
@@ -110,413 +80,275 @@ fun SecuritySettingsScreen(
             )
         }
     ) { paddingValues ->
-        Column(
+        LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(paddingValues)
-                .padding(16.dp)
-                .verticalScroll(rememberScrollState())
+                .padding(paddingValues),
+            contentPadding = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            // 안내 카드
+            item {
+                InstructionCard()
+            }
 
-            // API 키 설정 섹션
-            SecuritySection(
-                title = "Binance API 설정",
-                icon = Icons.Default.Key,
-                description = "거래를 위한 API 키를 설정하세요"
-            ) {
-
-                // API 키 상태 표시
-                if (validationStatus.isNotEmpty()) {
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(
-                            containerColor = if (validationStatus.contains("✅")) Color(0xFFE8F5E8) else Color(0xFFFFF3E0)
-                        )
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                "상태: $validationStatus",
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Medium,
-                                color = if (validationStatus.contains("✅")) Color(0xFF2E7D32) else Color(0xFFE65100)
-                            )
-
-                            if (apiKeyService.hasApiKeys()) {
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    "(키: ${apiKeyService.getMaskedApiKey()})",
-                                    fontSize = 12.sp,
-                                    color = Color.Gray
-                                )
+            // 네트워크 모드 선택
+            item {
+                NetworkModeCard(
+                    isTestnet = isTestnet,
+                    onModeChange = {
+                        isTestnet = it
+                        if (hasExistingKeys) {
+                            // 기존 키가 있으면 네트워크 모드만 변경
+                            if (apiKeyService.switchNetwork(it)) {
+                                Toast.makeText(
+                                    context,
+                                    "네트워크 모드가 변경되었습니다: ${if (it) "테스트넷" else "메인넷"}",
+                                    Toast.LENGTH_SHORT
+                                ).show()
                             }
                         }
                     }
-
-                    Spacer(modifier = Modifier.height(12.dp))
-                }
-
-                // 테스트넷/메인넷 토글
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (isTestMode) Color(0xFFFFF3E0) else Color(0xFFE8F5E8)
-                    )
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text(
-                                text = if (isTestMode) "테스트넷 모드" else "메인넷 모드",
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (isTestMode) Color(0xFFE65100) else Color(0xFF2E7D32)
-                            )
-                            Text(
-                                text = if (isTestMode) "안전한 테스트 환경" else "실제 거래 환경",
-                                fontSize = 12.sp,
-                                color = Color.Gray
-                            )
-                        }
-
-                        Switch(
-                            checked = !isTestMode,
-                            onCheckedChange = { isTestMode = !it },
-                            colors = SwitchDefaults.colors(
-                                checkedThumbColor = Color(0xFF4CAF50),
-                                uncheckedThumbColor = Color(0xFFFF9800)
-                            )
-                        )
-                    }
-                }
-
-                // 테스트넷 전용 빠른 설정 버튼
-                if (isTestMode) {
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    OutlinedButton(
-                        onClick = {
-                            apiKey = "aVr5Y9fwI8bSGMAgL49vg4nFBBJDIwk8ZNDDhwJMNTgtAe3KsOAMJV11nlIMQ6lN"
-                            secretKey = "MouGQp2UmZ8Jw4C9uDq6QshweTCiSmLNiQEGK9zKdHkjRm66Izcippxtsm7Ptmvt"
-                            validationStatus = "🧪 테스트넷 기본 키 로드됨"
-                            Toast.makeText(context, "테스트넷 기본 키가 설정되었습니다", Toast.LENGTH_SHORT).show()
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = Color(0xFFFF9800)
-                        )
-                    ) {
-                        Icon(Icons.Default.Science, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("🧪 테스트넷 기본 키 사용", fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // API Key 입력
-                OutlinedTextField(
-                    value = apiKey,
-                    onValueChange = { apiKey = it },
-                    label = { Text("API Key") },
-                    leadingIcon = {
-                        Icon(Icons.Default.VpnKey, contentDescription = null)
-                    },
-                    trailingIcon = {
-                        IconButton(onClick = { showApiKey = !showApiKey }) {
-                            Icon(
-                                if (showApiKey) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-                                contentDescription = if (showApiKey) "숨기기" else "보기"
-                            )
-                        }
-                    },
-                    visualTransformation = if (showApiKey) VisualTransformation.None else PasswordVisualTransformation(),
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = Color(0xFF2196F3),
-                        focusedLabelColor = Color(0xFF2196F3)
-                    ),
-                    placeholder = { Text("Binance API Key를 입력하세요") }
                 )
+            }
 
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // Secret Key 입력
-                OutlinedTextField(
-                    value = secretKey,
-                    onValueChange = { secretKey = it },
-                    label = { Text("Secret Key") },
-                    leadingIcon = {
-                        Icon(Icons.Default.Security, contentDescription = null)
-                    },
-                    trailingIcon = {
-                        IconButton(onClick = { showSecretKey = !showSecretKey }) {
-                            Icon(
-                                if (showSecretKey) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-                                contentDescription = if (showSecretKey) "숨기기" else "보기"
-                            )
-                        }
-                    },
-                    visualTransformation = if (showSecretKey) VisualTransformation.None else PasswordVisualTransformation(),
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = Color(0xFF2196F3),
-                        focusedLabelColor = Color(0xFF2196F3)
-                    ),
-                    placeholder = { Text("Binance Secret Key를 입력하세요") }
+            // API 키 입력 섹션
+            item {
+                ApiKeyInputSection(
+                    apiKey = if (hasExistingKeys) "" else apiKey,
+                    secretKey = if (hasExistingKeys) "" else secretKey,
+                    showApiKey = showApiKey,
+                    showSecretKey = showSecretKey,
+                    hasExistingKeys = hasExistingKeys,
+                    onApiKeyChange = { apiKey = it },
+                    onSecretKeyChange = { secretKey = it },
+                    onShowApiKeyToggle = { showApiKey = !showApiKey },
+                    onShowSecretKeyToggle = { showSecretKey = !showSecretKey }
                 )
+            }
 
-                Spacer(modifier = Modifier.height(16.dp))
+            // 보안 안내 카드
+            item {
+                SecurityNoticeCard()
+            }
 
-                // API 키 테스트 버튼
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    OutlinedButton(
-                        onClick = {
-                            if (apiKey.isNotBlank() && secretKey.isNotBlank()) {
-                                isLoading = true
-                                validationStatus = "🔄 검증 중..."
+            // 버튼 섹션
+            item {
+                ActionButtonsSection(
+                    hasExistingKeys = hasExistingKeys,
+                    isLoading = isLoading,
+                    apiKey = apiKey,
+                    secretKey = secretKey,
+                    isTestnet = isTestnet,
+                    onSave = {
+                        if (apiKey.isBlank() || secretKey.isBlank()) {
+                            Toast.makeText(context, "API 키와 Secret 키를 모두 입력해주세요", Toast.LENGTH_SHORT).show()
+                            return@ActionButtonsSection
+                        }
 
-                                scope.launch {
-                                    // 먼저 저장
-                                    try {
-                                        apiKeyService.saveApiKeys(apiKey, secretKey, isTestMode)
+                        if (!apiKeyService.validateApiKeys(apiKey, secretKey)) {
+                            Toast.makeText(context, "올바른 API 키 형식이 아닙니다", Toast.LENGTH_SHORT).show()
+                            return@ActionButtonsSection
+                        }
 
-                                        // 그 다음 검증
-                                        val (isValid, message) = apiKeyService.validateApiKeys()
+                        isLoading = true
 
-                                        validationStatus = if (isValid) {
-                                            "✅ $message"
-                                        } else {
-                                            "❌ $message"
-                                        }
-
-                                        Toast.makeText(
-                                            context,
-                                            if (isValid) "API 키 검증 성공!" else "검증 실패: $message",
-                                            Toast.LENGTH_LONG
-                                        ).show()
-
-                                    } catch (e: Exception) {
-                                        validationStatus = "❌ 오류: ${e.message}"
-                                        Toast.makeText(context, "오류: ${e.message}", Toast.LENGTH_LONG).show()
-                                    } finally {
-                                        isLoading = false
-                                    }
-                                }
-                            } else {
-                                Toast.makeText(context, "API 키와 Secret 키를 모두 입력해주세요", Toast.LENGTH_SHORT).show()
-                            }
-                        },
-                        modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = Color(0xFF2196F3)
-                        ),
-                        enabled = !isLoading
-                    ) {
-                        if (isLoading) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(16.dp),
-                                color = Color(0xFF2196F3)
-                            )
+                        if (apiKeyService.saveApiKeys(apiKey, secretKey, isTestnet)) {
+                            Toast.makeText(context, "API 키가 저장되었습니다", Toast.LENGTH_SHORT).show()
+                            hasExistingKeys = true
+                            currentKeyData = ApiKeyData(apiKey, secretKey, isTestnet)
+                            // 보안상 입력 필드 초기화
+                            apiKey = "*".repeat(20)
+                            secretKey = "*".repeat(20)
                         } else {
-                            Icon(Icons.Default.NetworkCheck, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("연결 테스트", fontSize = 14.sp)
+                            Toast.makeText(context, "API 키 저장에 실패했습니다", Toast.LENGTH_SHORT).show()
                         }
-                    }
 
-                    Button(
-                        onClick = {
-                            if (apiKey.isNotBlank() && secretKey.isNotBlank()) {
-                                try {
-                                    apiKeyService.saveApiKeys(apiKey, secretKey, isTestMode)
-                                    validationStatus = "💾 저장됨 (미검증)"
-                                    Toast.makeText(context, "API 키가 안전하게 저장되었습니다", Toast.LENGTH_SHORT).show()
-                                } catch (e: Exception) {
-                                    Toast.makeText(context, "저장 실패: ${e.message}", Toast.LENGTH_LONG).show()
-                                }
-                            } else {
-                                Toast.makeText(context, "모든 필드를 입력해주세요", Toast.LENGTH_SHORT).show()
-                            }
-                        },
-                        modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFF4CAF50)
-                        )
-                    ) {
-                        Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("저장", fontSize = 14.sp)
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // 앱 보안 설정 섹션
-            SecuritySection(
-                title = "앱 보안",
-                icon = Icons.Default.Shield,
-                description = "앱 사용 시 보안 설정을 관리하세요"
-            ) {
-
-                // 자동 잠금
-                SecurityToggleItem(
-                    icon = Icons.Default.Lock,
-                    title = "자동 잠금",
-                    subtitle = "일정 시간 후 자동으로 잠금",
-                    checked = autoLockEnabled,
-                    onCheckedChange = { autoLockEnabled = it }
-                )
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // 생체 인증
-                SecurityToggleItem(
-                    icon = Icons.Default.Fingerprint,
-                    title = "생체 인증",
-                    subtitle = "지문 또는 얼굴 인식으로 잠금 해제",
-                    checked = biometricEnabled,
-                    onCheckedChange = { biometricEnabled = it }
-                )
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // 알림 보안
-                SecurityToggleItem(
-                    icon = Icons.Default.NotificationsOff,
-                    title = "알림 보안",
-                    subtitle = "잠금 화면에서 민감한 정보 숨김",
-                    checked = notificationSecurity,
-                    onCheckedChange = { notificationSecurity = it }
-                )
-            }
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // 위험 구역
-            SecuritySection(
-                title = "위험 구역",
-                icon = Icons.Default.Warning,
-                description = "신중하게 사용하세요",
-                isWarning = true
-            ) {
-
-                // API 키 삭제 버튼
-                OutlinedButton(
-                    onClick = {
-                        if (apiKeyService.hasApiKeys()) {
-                            apiKeyService.deleteApiKeys()
+                        isLoading = false
+                    },
+                    onDelete = {
+                        if (apiKeyService.clearApiKeys()) {
+                            Toast.makeText(context, "API 키가 삭제되었습니다", Toast.LENGTH_SHORT).show()
+                            hasExistingKeys = false
+                            currentKeyData = null
                             apiKey = ""
                             secretKey = ""
-                            validationStatus = ""
-                            Toast.makeText(context, "저장된 API 키가 삭제되었습니다", Toast.LENGTH_SHORT).show()
                         } else {
-                            Toast.makeText(context, "삭제할 API 키가 없습니다", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "API 키 삭제에 실패했습니다", Toast.LENGTH_SHORT).show()
                         }
                     },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = Color(0xFFF44336)
-                    )
-                ) {
-                    Icon(Icons.Default.DeleteForever, contentDescription = null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("저장된 API 키 삭제", fontWeight = FontWeight.Bold)
+                    onTest = {
+                        Toast.makeText(context, "API 키 테스트 기능은 개발 중입니다", Toast.LENGTH_SHORT).show()
+                    }
+                )
+            }
+
+            // 현재 설정 정보
+            if (hasExistingKeys) {
+                item {
+                    CurrentSettingsCard(currentKeyData)
                 }
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            // API 키 획득 가이드
+            item {
+                ApiKeyGuideCard()
+            }
+
+            // 하단 여백
+            item {
+                Spacer(modifier = Modifier.height(32.dp))
+            }
         }
     }
 }
 
-// 시간 포맷팅 함수
-private fun formatTime(timestamp: Long): String {
-    if (timestamp == 0L) return "없음"
-
-    val now = System.currentTimeMillis()
-    val diff = now - timestamp
-
-    return when {
-        diff < 60_000 -> "방금 전"
-        diff < 3600_000 -> "${diff / 60_000}분 전"
-        diff < 86400_000 -> "${diff / 3600_000}시간 전"
-        else -> "${diff / 86400_000}일 전"
-    }
-}
-
 @Composable
-fun SecuritySection(
-    title: String,
-    icon: ImageVector,
-    description: String,
-    isWarning: Boolean = false,
-    content: @Composable ColumnScope.() -> Unit
-) {
+private fun InstructionCard() {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
-            containerColor = if (isWarning) Color(0xFFFFF0F0) else Color(0xFFE3F2FD)
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            containerColor = Color(0xFFFFF3E0)
+        )
     ) {
         Column(
             modifier = Modifier.padding(16.dp)
         ) {
-            // 섹션 헤더
             Row(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
-                    icon,
+                    Icons.Default.Info,
                     contentDescription = null,
-                    tint = if (isWarning) Color(0xFFF44336) else Color(0xFF2196F3),
-                    modifier = Modifier.size(24.dp)
+                    tint = Color(0xFFFF9800)
                 )
-                Spacer(modifier = Modifier.width(12.dp))
-                Column {
-                    Text(
-                        title,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = if (isWarning) Color(0xFFF44336) else Color(0xFF1976D2)
-                    )
-                    Text(
-                        description,
-                        fontSize = 12.sp,
-                        color = Color.Gray
-                    )
-                }
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    "바이낸스 API 키 설정",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFFE65100)
+                )
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
-            // 섹션 내용
-            content()
+            Text(
+                "실제 계좌 정보를 조회하고 거래하려면 바이낸스 API 키가 필요합니다.",
+                fontSize = 14.sp,
+                color = Color(0xFFBF360C),
+                lineHeight = 20.sp
+            )
         }
     }
 }
 
 @Composable
-fun SecurityToggleItem(
-    icon: ImageVector,
-    title: String,
-    subtitle: String,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit
+private fun NetworkModeCard(
+    isTestnet: Boolean,
+    onModeChange: (Boolean) -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = Color(0xFFE3F2FD)
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp)
+        ) {
+            Text(
+                "네트워크 모드",
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFF1976D2)
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
+                // 테스트넷 버튼
+                Card(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(end = 4.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (isTestnet) Color(0xFFFF9800) else Color.White
+                    ),
+                    onClick = { onModeChange(true) }
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            "🧪",
+                            fontSize = 24.sp
+                        )
+                        Text(
+                            "테스트넷",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = if (isTestnet) Color.White else Color(0xFF666666)
+                        )
+                        Text(
+                            "안전한 테스트",
+                            fontSize = 10.sp,
+                            color = if (isTestnet) Color.White else Color.Gray
+                        )
+                    }
+                }
+
+                // 메인넷 버튼
+                Card(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(start = 4.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (!isTestnet) Color(0xFFF44336) else Color.White
+                    ),
+                    onClick = { onModeChange(false) }
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            "🔴",
+                            fontSize = 24.sp
+                        )
+                        Text(
+                            "메인넷",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = if (!isTestnet) Color.White else Color(0xFF666666)
+                        )
+                        Text(
+                            "실제 거래",
+                            fontSize = 10.sp,
+                            color = if (!isTestnet) Color.White else Color.Gray
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ApiKeyInputSection(
+    apiKey: String,
+    secretKey: String,
+    showApiKey: Boolean,
+    showSecretKey: Boolean,
+    hasExistingKeys: Boolean,
+    onApiKeyChange: (String) -> Unit,
+    onSecretKeyChange: (String) -> Unit,
+    onShowApiKeyToggle: () -> Unit,
+    onShowSecretKeyToggle: () -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -524,43 +356,326 @@ fun SecurityToggleItem(
             containerColor = Color.White
         )
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
+        Column(
+            modifier = Modifier.padding(16.dp)
         ) {
-            Icon(
-                icon,
-                contentDescription = null,
-                tint = Color(0xFF2196F3),
-                modifier = Modifier.size(20.dp)
+            Text(
+                if (hasExistingKeys) "API 키 업데이트" else "API 키 입력",
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFF1976D2)
             )
 
-            Spacer(modifier = Modifier.width(12.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
-            Column(
-                modifier = Modifier.weight(1f)
-            ) {
-                Text(
-                    title,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF1976D2)
+            // API Key 입력
+            OutlinedTextField(
+                value = apiKey,
+                onValueChange = onApiKeyChange,
+                label = { Text("API Key") },
+                placeholder = {
+                    Text(
+                        if (hasExistingKeys) "새 API Key 입력 (선택사항)"
+                        else "바이낸스 API Key 입력"
+                    )
+                },
+                leadingIcon = {
+                    Icon(Icons.Default.Key, contentDescription = null)
+                },
+                trailingIcon = {
+                    IconButton(onClick = onShowApiKeyToggle) {
+                        Icon(
+                            if (showApiKey) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                            contentDescription = if (showApiKey) "숨기기" else "보기"
+                        )
+                    }
+                },
+                visualTransformation = if (showApiKey) VisualTransformation.None else PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                modifier = Modifier.fillMaxWidth(),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Color(0xFF2196F3),
+                    focusedLabelColor = Color(0xFF2196F3)
                 )
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Secret Key 입력
+            OutlinedTextField(
+                value = secretKey,
+                onValueChange = onSecretKeyChange,
+                label = { Text("Secret Key") },
+                placeholder = {
+                    Text(
+                        if (hasExistingKeys) "새 Secret Key 입력 (선택사항)"
+                        else "바이낸스 Secret Key 입력"
+                    )
+                },
+                leadingIcon = {
+                    Icon(Icons.Default.Lock, contentDescription = null)
+                },
+                trailingIcon = {
+                    IconButton(onClick = onShowSecretKeyToggle) {
+                        Icon(
+                            if (showSecretKey) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                            contentDescription = if (showSecretKey) "숨기기" else "보기"
+                        )
+                    }
+                },
+                visualTransformation = if (showSecretKey) VisualTransformation.None else PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                modifier = Modifier.fillMaxWidth(),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Color(0xFF2196F3),
+                    focusedLabelColor = Color(0xFF2196F3)
+                )
+            )
+        }
+    }
+}
+
+@Composable
+private fun SecurityNoticeCard() {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = Color(0xFFFFEBEE)
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Default.Security,
+                    contentDescription = null,
+                    tint = Color(0xFFF44336)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    subtitle,
-                    fontSize = 12.sp,
-                    color = Color.Gray
+                    "보안 주의사항",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFFC62828)
                 )
             }
 
-            Switch(
-                checked = checked,
-                onCheckedChange = onCheckedChange,
-                colors = SwitchDefaults.colors(
-                    checkedThumbColor = Color(0xFF4CAF50)
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text(
+                "• API 키는 안전하게 보관되며 암호화됩니다\n" +
+                        "• 다른 사람과 API 키를 공유하지 마세요\n" +
+                        "• 의심스러운 활동이 있으면 즉시 키를 재생성하세요\n" +
+                        "• 처음 사용시에는 테스트넷을 권장합니다",
+                fontSize = 12.sp,
+                color = Color(0xFFD32F2F),
+                lineHeight = 16.sp
+            )
+        }
+    }
+}
+
+@Composable
+private fun ActionButtonsSection(
+    hasExistingKeys: Boolean,
+    isLoading: Boolean,
+    apiKey: String,
+    secretKey: String,
+    isTestnet: Boolean,
+    onSave: () -> Unit,
+    onDelete: () -> Unit,
+    onTest: () -> Unit
+) {
+    Column {
+        // 저장 버튼
+        Button(
+            onClick = onSave,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(56.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Color(0xFF4CAF50),
+                contentColor = Color.White
+            ),
+            enabled = !isLoading
+        ) {
+            if (isLoading) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(24.dp),
+                    color = Color.White
                 )
+            } else {
+                Icon(Icons.Default.Save, contentDescription = null)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    if (hasExistingKeys) "업데이트" else "저장",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+
+        if (hasExistingKeys) {
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                // 테스트 버튼
+                OutlinedButton(
+                    onClick = onTest,
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(48.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = Color(0xFF2196F3)
+                    )
+                ) {
+                    Icon(Icons.Default.Check, contentDescription = null)
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("테스트")
+                }
+
+                // 삭제 버튼
+                OutlinedButton(
+                    onClick = onDelete,
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(48.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = Color(0xFFF44336)
+                    )
+                ) {
+                    Icon(Icons.Default.Delete, contentDescription = null)
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("삭제")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CurrentSettingsCard(currentKeyData: ApiKeyData?) {
+    if (currentKeyData != null) {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = Color(0xFFE8F5E8)
+            )
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp)
+            ) {
+                Text(
+                    "현재 설정",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF2E7D32)
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        "네트워크:",
+                        fontSize = 14.sp,
+                        color = Color(0xFF388E3C)
+                    )
+                    Text(
+                        if (currentKeyData.isTestnet) "🧪 테스트넷" else "🔴 메인넷",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = if (currentKeyData.isTestnet) Color(0xFFFF9800) else Color(0xFFF44336)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        "API 키:",
+                        fontSize = 14.sp,
+                        color = Color(0xFF388E3C)
+                    )
+                    Text(
+                        "${currentKeyData.apiKey.take(8)}...",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = Color(0xFF388E3C)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ApiKeyGuideCard() {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = Color(0xFFF3E5F5)
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Default.HelpOutline,
+                    contentDescription = null,
+                    tint = Color(0xFF9C27B0)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    "API 키 발급 가이드",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF7B1FA2)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            val steps = listOf(
+                "1. 바이낸스 웹사이트 로그인",
+                "2. 우측 상단 프로필 → API 관리",
+                "3. '새 API 키 생성' 클릭",
+                "4. API 키 라벨 입력 (예: Mobile App)",
+                "5. Spot & Margin Trading 권한 체크",
+                "6. API Key와 Secret Key 복사",
+                "7. 위 입력창에 붙여넣기"
+            )
+
+            steps.forEach { step ->
+                Text(
+                    step,
+                    fontSize = 12.sp,
+                    color = Color(0xFF8E24AA),
+                    modifier = Modifier.padding(vertical = 2.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text(
+                "⚠️ 처음 사용시에는 테스트넷으로 연습해보세요!",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFF7B1FA2)
             )
         }
     }
