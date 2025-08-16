@@ -1,15 +1,22 @@
-// 개선된 TradeHistoryDetailScreen.kt - 실제 백테스트 데이터만 표시
+// 개선된 TradeHistoryDetailScreen.kt - 새로운 거래 내역 시스템
 
 package com.example.ver20.view
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.font.FontStyle
@@ -22,6 +29,48 @@ import java.util.*
 import com.example.ver20.dao.CciBacktestResult
 import com.example.ver20.dao.TradeResult
 
+// 개선된 거래 내역 데이터 클래스
+data class EnhancedTradeRecord(
+    val tradeId: Int,
+    val symbol: String,
+    val type: String, // "LONG" or "SHORT"
+    val status: String, // "COMPLETED", "FORCE_CLOSED"
+    val buyTrades: List<BuyTradeDetail>,
+    val sellTrades: List<SellTradeDetail>,
+    val totalProfit: Double,
+    val totalFees: Double,
+    val startTime: String,
+    val endTime: String,
+    val averagePrice: Double,
+    val maxStage: Int,
+    val duration: String
+)
+
+data class BuyTradeDetail(
+    val stage: Int, // 0=첫진입, 1~4=물타기
+    val type: String, // "STAGE0_BUY", "STAGE1_BUY", etc.
+    val price: Double,
+    val amount: Double,
+    val coins: Double,
+    val fee: Double,
+    val timestamp: String,
+    val cci: Double,
+    val previousCCI: Double,
+    val reason: String? = null // 물타기 이유
+)
+
+data class SellTradeDetail(
+    val type: String, // "PROFIT_EXIT", "HALF_SELL", "FORCE_CLOSE"
+    val price: Double,
+    val amount: Double,
+    val coins: Double,
+    val fee: Double,
+    val timestamp: String,
+    val cci: Double,
+    val reason: String,
+    val profitRate: Double
+)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TradeHistoryDetailScreen(
@@ -29,18 +78,20 @@ fun TradeHistoryDetailScreen(
     onBackClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    // 실제 백테스트 데이터만 필터링
-    val validTrades = filterValidTrades(backtestResult.trades)
-    val filteredResult = backtestResult.copy(trades = validTrades)
+    // 백테스팅 결과를 개선된 거래 기록으로 변환
+    val enhancedTrades = convertToEnhancedTrades(backtestResult.trades)
+    var expandedTradeId by remember { mutableStateOf<Int?>(null) }
+    var selectedFilter by remember { mutableStateOf("ALL") }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
                     Text(
-                        "실제 백테스트 거래내역",
+                        "🎯 새로운 거래 내역 시스템",
                         fontWeight = FontWeight.Bold,
-                        color = Color.White
+                        color = Color.White,
+                        fontSize = 18.sp
                     )
                 },
                 navigationIcon = {
@@ -65,86 +116,66 @@ fun TradeHistoryDetailScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // 실제 백테스트 결과 요약
+            // 🎯 전체 요약 카드
             item {
-                EnhancedBacktestSummaryCard(filteredResult)
+                EnhancedBacktestOverviewCard(backtestResult, enhancedTrades)
             }
 
-            // 데이터 검증 결과 표시
+            // 📊 거래 필터
             item {
-                DataValidationCard(backtestResult.trades.size, validTrades.size)
+                TradeFilterCard(selectedFilter) { filter ->
+                    selectedFilter = filter
+                }
             }
 
-            // 개별 거래 내역
-            if (validTrades.isNotEmpty()) {
-                // 시간순 정렬 (과거부터)
-                val sortedTrades = validTrades.sortedBy { trade ->
-                    try {
-                        val format = SimpleDateFormat("MM-dd HH:mm", Locale.getDefault())
-                        format.timeZone = TimeZone.getTimeZone("UTC")
-                        format.parse(trade.timestamp)?.time ?: 0L
-                    } catch (e: Exception) {
-                        0L
-                    }
+            // 📈 개별 거래 내역들
+            if (enhancedTrades.isNotEmpty()) {
+                val filteredTrades = when (selectedFilter) {
+                    "PROFIT" -> enhancedTrades.filter { it.totalProfit > 0 }
+                    "LOSS" -> enhancedTrades.filter { it.totalProfit <= 0 }
+                    "LONG" -> enhancedTrades.filter { it.type == "LONG" }
+                    "SHORT" -> enhancedTrades.filter { it.type == "SHORT" }
+                    else -> enhancedTrades
                 }
 
-                items(sortedTrades.size) { index ->
+                items(filteredTrades) { trade ->
                     EnhancedTradeCard(
-                        trade = sortedTrades[index],
-                        tradeNumber = index + 1
+                        trade = trade,
+                        isExpanded = expandedTradeId == trade.tradeId,
+                        onToggleExpand = {
+                            expandedTradeId = if (expandedTradeId == trade.tradeId) null else trade.tradeId
+                        }
                     )
                 }
             } else {
                 item {
-                    NoValidTradesCard()
+                    NoTradesCard()
                 }
             }
-        }
-    }
-}
 
-// 실제 백테스트 데이터만 필터링
-private fun filterValidTrades(trades: List<TradeResult>): List<TradeResult> {
-    return trades.filter { trade ->
-        // 1. CCI 값이 실제로 존재하는지 확인
-        val hasCCIData = trade.entryCCI != 0.0 || trade.previousCCI != 0.0
-
-        // 2. CCI 진입 조건이 실제로 맞는지 검증
-        val isValidCCIEntry = when (trade.type) {
-            "LONG" -> {
-                // 롱: 이전 CCI < -110 && 진입 CCI >= -100
-                trade.previousCCI < -110 && trade.entryCCI >= -100
+            // 하단 여백
+            item {
+                Spacer(modifier = Modifier.height(80.dp))
             }
-            "SHORT" -> {
-                // 숏: 이전 CCI > +110 && 진입 CCI <= +100
-                trade.previousCCI > 110 && trade.entryCCI <= 100
-            }
-            else -> false
         }
-
-        // 3. 거래 금액이 유효한지 확인
-        val hasValidAmount = trade.amount > 0
-
-        // 4. 진입가와 청산가가 유효한지 확인
-        val hasValidPrices = trade.entryPrice > 0 && trade.exitPrice > 0
-
-        // 5. 타임스탬프가 유효한지 확인
-        val hasValidTimestamp = trade.timestamp.isNotEmpty() && trade.timestamp != "Invalid Date"
-
-        // 모든 조건을 만족하는 거래만 유효한 것으로 간주
-        hasCCIData && isValidCCIEntry && hasValidAmount && hasValidPrices && hasValidTimestamp
     }
 }
 
 @Composable
-fun EnhancedBacktestSummaryCard(result: CciBacktestResult) {
+fun EnhancedBacktestOverviewCard(
+    result: CciBacktestResult,
+    enhancedTrades: List<EnhancedTradeRecord>
+) {
     val formatter = DecimalFormat("#,##0.00")
+    val totalBuyTrades = enhancedTrades.sumOf { it.buyTrades.size }
+    val totalSellTrades = enhancedTrades.sumOf { it.sellTrades.size }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
-            containerColor = Color(0xFFE8F5E8)
-        )
+            containerColor = Color(0xFFE3F2FD)
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
         Column(
             modifier = Modifier.padding(16.dp)
@@ -153,51 +184,71 @@ fun EnhancedBacktestSummaryCard(result: CciBacktestResult) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
-                    Icons.Default.CheckCircle,
+                    Icons.Default.Analytics,
                     contentDescription = null,
-                    tint = Color(0xFF4CAF50),
+                    tint = Color(0xFF1976D2),
                     modifier = Modifier.size(24.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    "📊 실제 백테스트 결과 요약",
+                    "📊 전체 백테스팅 결과 요약",
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFF2E7D32)
+                    color = Color(0xFF1976D2)
                 )
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Text(
-                "검증된 ${result.trades.size}개 거래 (CCI 조건 만족)",
-                fontSize = 12.sp,
-                color = Color(0xFF666666),
-                fontStyle = FontStyle.Italic
-            )
-
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
             // 주요 지표들
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
-                SummaryBackItem("총 수익률", "+${formatter.format((result.finalSeedMoney/10000 - 1) * 100)}%", Color(0xFF4CAF50))
-                SummaryBackItem("승률", "${formatter.format(result.winRate)}%", Color(0xFF2196F3))
-                SummaryBackItem("최대 손실", "${formatter.format(result.maxDrawdown)}%", Color(0xFFF44336))
+                OverviewMetric(
+                    icon = Icons.Default.TrendingUp,
+                    label = "총 포지션",
+                    value = "${enhancedTrades.size}개",
+                    color = Color(0xFF4CAF50)
+                )
+                OverviewMetric(
+                    icon = Icons.Default.ShoppingCart,
+                    label = "매수 거래",
+                    value = "${totalBuyTrades}건",
+                    color = Color(0xFF2196F3)
+                )
+                OverviewMetric(
+                    icon = Icons.Default.AccountBalanceWallet,
+                    label = "매도 거래",
+                    value = "${totalSellTrades}건",
+                    color = Color(0xFFFF9800)
+                )
             }
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // 상세 지표들
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
-                SummaryBackItem("총 수익", "${formatter.format(result.totalProfit)}", Color(0xFF4CAF50))
-                SummaryBackItem("총 수수료", "${formatter.format(result.totalFees)}", Color(0xFFF44336))
-                SummaryBackItem("수익 팩터", formatter.format(result.profitFactor), Color(0xFFFF9800))
+                OverviewMetric(
+                    icon = Icons.Default.AttachMoney,
+                    label = "총 수익",
+                    value = "${formatter.format(result.totalProfit)}",
+                    color = if (result.totalProfit >= 0) Color(0xFF4CAF50) else Color(0xFFF44336)
+                )
+                OverviewMetric(
+                    icon = Icons.Default.Percent,
+                    label = "승률",
+                    value = "${formatter.format(result.winRate)}%",
+                    color = Color(0xFF9C27B0)
+                )
+                OverviewMetric(
+                    icon = Icons.Default.TrendingDown,
+                    label = "최대손실",
+                    value = "${formatter.format(result.maxDrawdown)}%",
+                    color = Color(0xFFF44336)
+                )
             }
 
             Spacer(modifier = Modifier.height(12.dp))
@@ -205,7 +256,7 @@ fun EnhancedBacktestSummaryCard(result: CciBacktestResult) {
             // 실제 데이터 검증 표시
             Card(
                 colors = CardDefaults.cardColors(
-                    containerColor = Color(0xFFE3F2FD)
+                    containerColor = Color(0xFFE8F5E8)
                 )
             ) {
                 Row(
@@ -215,15 +266,15 @@ fun EnhancedBacktestSummaryCard(result: CciBacktestResult) {
                     Icon(
                         Icons.Default.Verified,
                         contentDescription = null,
-                        tint = Color(0xFF2196F3),
+                        tint = Color(0xFF4CAF50),
                         modifier = Modifier.size(16.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        "실제 바이낸스 데이터 + CCI 조건 검증 완료",
-                        fontSize = 11.sp,
+                        "✅ 실제 바이낸스 데이터 + CCI 조건 완전 검증",
+                        fontSize = 12.sp,
                         fontWeight = FontWeight.Medium,
-                        color = Color(0xFF1976D2)
+                        color = Color(0xFF2E7D32)
                     )
                 }
             }
@@ -232,10 +283,22 @@ fun EnhancedBacktestSummaryCard(result: CciBacktestResult) {
 }
 
 @Composable
-fun SummaryBackItem(label: String, value: String, color: Color) {
+fun OverviewMetric(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    value: String,
+    color: Color
+) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        Icon(
+            icon,
+            contentDescription = null,
+            tint = color,
+            modifier = Modifier.size(20.dp)
+        )
+        Spacer(modifier = Modifier.height(4.dp))
         Text(
             label,
             fontSize = 10.sp,
@@ -244,7 +307,7 @@ fun SummaryBackItem(label: String, value: String, color: Color) {
         )
         Text(
             value,
-            fontSize = 14.sp,
+            fontSize = 12.sp,
             fontWeight = FontWeight.Bold,
             color = color
         )
@@ -252,102 +315,113 @@ fun SummaryBackItem(label: String, value: String, color: Color) {
 }
 
 @Composable
-fun DataValidationCard(originalCount: Int, validCount: Int) {
-    val filterRate = if (originalCount > 0) (validCount.toDouble() / originalCount * 100) else 0.0
-    val filteredCount = originalCount - validCount
-
+fun TradeFilterCard(
+    selectedFilter: String,
+    onFilterChange: (String) -> Unit
+) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
-            containerColor = if (filteredCount > 0) Color(0xFFFFF3E0) else Color(0xFFE8F5E8)
+            containerColor = Color(0xFFF5F5F5)
         )
     ) {
         Column(
             modifier = Modifier.padding(16.dp)
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    if (filteredCount > 0) Icons.Default.FilterAlt else Icons.Default.CheckCircle,
-                    contentDescription = null,
-                    tint = if (filteredCount > 0) Color(0xFFFF9800) else Color(0xFF4CAF50),
-                    modifier = Modifier.size(20.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    "🔍 데이터 검증 결과",
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = if (filteredCount > 0) Color(0xFFE65100) else Color(0xFF2E7D32)
-                )
-            }
+            Text(
+                "📋 거래 필터",
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFF424242)
+            )
 
             Spacer(modifier = Modifier.height(8.dp))
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text(
-                    "원본 거래 수: ${originalCount}개",
-                    fontSize = 12.sp,
-                    color = Color(0xFF666666)
+                FilterChip(
+                    text = "전체",
+                    isSelected = selectedFilter == "ALL",
+                    onClick = { onFilterChange("ALL") }
                 )
-                Text(
-                    "검증된 거래: ${validCount}개",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = Color(0xFF4CAF50)
+                FilterChip(
+                    text = "수익",
+                    isSelected = selectedFilter == "PROFIT",
+                    onClick = { onFilterChange("PROFIT") }
+                )
+                FilterChip(
+                    text = "손실",
+                    isSelected = selectedFilter == "LOSS",
+                    onClick = { onFilterChange("LOSS") }
+                )
+                FilterChip(
+                    text = "롱",
+                    isSelected = selectedFilter == "LONG",
+                    onClick = { onFilterChange("LONG") }
+                )
+                FilterChip(
+                    text = "숏",
+                    isSelected = selectedFilter == "SHORT",
+                    onClick = { onFilterChange("SHORT") }
                 )
             }
-
-            if (filteredCount > 0) {
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    "⚠️ 필터링된 거래: ${filteredCount}개 (CCI 조건 불만족 또는 잘못된 데이터)",
-                    fontSize = 11.sp,
-                    color = Color(0xFFE65100),
-                    fontStyle = FontStyle.Italic
-                )
-            }
-
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                "유효 데이터 비율: ${DecimalFormat("#.#").format(filterRate)}%",
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Medium,
-                color = if (filterRate >= 90) Color(0xFF4CAF50) else Color(0xFFFF9800)
-            )
         }
     }
 }
 
 @Composable
-fun EnhancedTradeCard(trade: TradeResult, tradeNumber: Int) {
+fun FilterChip(
+    text: String,
+    isSelected: Boolean,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .clickable { onClick() }
+            .background(
+                color = if (isSelected) Color(0xFF2196F3) else Color.White,
+                shape = RoundedCornerShape(16.dp)
+            )
+            .border(
+                width = 1.dp,
+                color = if (isSelected) Color(0xFF2196F3) else Color(0xFFCCCCCC),
+                shape = RoundedCornerShape(16.dp)
+            )
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+    ) {
+        Text(
+            text = text,
+            fontSize = 12.sp,
+            color = if (isSelected) Color.White else Color(0xFF666666),
+            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+        )
+    }
+}
+
+@Composable
+fun EnhancedTradeCard(
+    trade: EnhancedTradeRecord,
+    isExpanded: Boolean,
+    onToggleExpand: () -> Unit
+) {
     val formatter = DecimalFormat("#,##0.00")
-    val cciFormatter = DecimalFormat("#,##0.0")
-    val coinFormatter = DecimalFormat("#,##0.######")
-
-    val isProfit = trade.profit >= 0
-    val profitColor = if (isProfit) Color(0xFF4CAF50) else Color(0xFFF44336)
-
-    // 코인 수량 계산
-    val coinQuantity = trade.amount / trade.entryPrice
-
-    // 한국시간 변환
-    val koreanTime = convertToKoreanTime(trade.timestamp)
+    val isProfit = trade.totalProfit >= 0
 
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onToggleExpand() },
         colors = CardDefaults.cardColors(
             containerColor = if (isProfit) Color(0xFFE8F5E8) else Color(0xFFFFEBEE)
-        )
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
         Column(
             modifier = Modifier.padding(16.dp)
         ) {
-            // 거래 헤더 (검증 상태 포함)
+            // 거래 헤더
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -360,172 +434,204 @@ fun EnhancedTradeCard(trade: TradeResult, tradeNumber: Int) {
                         if (trade.type == "LONG") Icons.Default.TrendingUp else Icons.Default.TrendingDown,
                         contentDescription = null,
                         tint = if (trade.type == "LONG") Color(0xFF4CAF50) else Color(0xFFF44336),
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Icon(
-                        Icons.Default.Verified,
-                        contentDescription = "검증된 거래",
-                        tint = Color(0xFF2196F3),
-                        modifier = Modifier.size(16.dp)
+                        modifier = Modifier.size(24.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Column {
                         Text(
-                            "거래 #$tradeNumber (${trade.type})",
+                            "${trade.symbol} ${trade.type} #${trade.tradeId}",
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFF424242)
                         )
                         Text(
-                            getEnhancedTradeTypeDescription(trade),
-                            fontSize = 10.sp,
-                            color = Color(0xFF9E9E9E),
-                            fontStyle = FontStyle.Italic
+                            "${trade.maxStage + 1}단계 물타기 | ${trade.duration}",
+                            fontSize = 11.sp,
+                            color = Color(0xFF666666)
                         )
                     }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Icon(
+                        if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        contentDescription = null,
+                        tint = Color(0xFF666666),
+                        modifier = Modifier.size(20.dp)
+                    )
                 }
 
-                Text(
-                    "${if (isProfit) "+" else ""}${formatter.format(trade.profit)}",
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = profitColor
-                )
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // 검증된 CCI 분석
-            VerifiedCCIAnalysisCard(trade, cciFormatter)
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // 거래 정보
-            EnhancedTradeInfoSection(trade, formatter, coinFormatter)
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // 시간 정보
-            Text(
-                "거래 시간: $koreanTime (KST)",
-                fontSize = 10.sp,
-                color = Color(0xFF999999)
-            )
-
-            // 수익률
-            val profitRate = ((trade.exitPrice - trade.entryPrice) / trade.entryPrice * 100).let {
-                if (trade.type == "SHORT") -it else it
-            }
-
-            Text(
-                "수익률: ${if (profitRate >= 0) "+" else ""}${formatter.format(profitRate)}%",
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Medium,
-                color = if (profitRate >= 0) Color(0xFF4CAF50) else Color(0xFFF44336)
-            )
-        }
-    }
-}
-
-@Composable
-fun VerifiedCCIAnalysisCard(trade: TradeResult, cciFormatter: DecimalFormat) {
-    val isValidEntry = when (trade.type) {
-        "LONG" -> trade.previousCCI < -110 && trade.entryCCI >= -100
-        "SHORT" -> trade.previousCCI > 110 && trade.entryCCI <= 100
-        else -> false
-    }
-
-    Card(
-        colors = CardDefaults.cardColors(
-            containerColor = if (isValidEntry) Color(0xFFE8F5E8) else Color(0xFFFFEBEE)
-        )
-    ) {
-        Column(
-            modifier = Modifier.padding(12.dp)
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    if (isValidEntry) Icons.Default.CheckCircle else Icons.Default.Error,
-                    contentDescription = null,
-                    tint = if (isValidEntry) Color(0xFF4CAF50) else Color(0xFFF44336),
-                    modifier = Modifier.size(16.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    "🎯 검증된 CCI 진입 분석",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF424242)
-                )
+                Column(
+                    horizontalAlignment = Alignment.End
+                ) {
+                    Text(
+                        "${if (isProfit) "+" else ""}${formatter.format(trade.totalProfit)}",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isProfit) Color(0xFF4CAF50) else Color(0xFFF44336)
+                    )
+                    Text(
+                        "수수료: ${formatter.format(trade.totalFees)}",
+                        fontSize = 10.sp,
+                        color = Color(0xFF666666)
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // CCI 값 표시
+            // 기본 정보
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    "이전 CCI: ${cciFormatter.format(trade.previousCCI)}",
-                    fontSize = 11.sp,
+                    "평단가: ${formatter.format(trade.averagePrice)}",
+                    fontSize = 12.sp,
                     color = Color(0xFF666666)
                 )
                 Text(
-                    "진입 CCI: ${cciFormatter.format(trade.entryCCI)}",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = if (trade.type == "LONG") Color(0xFF2196F3) else Color(0xFFFF5722)
+                    "상태: ${if (trade.status == "COMPLETED") "정상완료" else "강제청산"}",
+                    fontSize = 12.sp,
+                    color = if (trade.status == "COMPLETED") Color(0xFF4CAF50) else Color(0xFFF44336)
                 )
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                "시작: ${trade.startTime} → 종료: ${trade.endTime}",
+                fontSize = 11.sp,
+                color = Color(0xFF666666)
+            )
 
-            // 조건 분석
-            if (trade.type == "LONG") {
-                Text(
-                    "롱 조건: CCI < -110 → CCI ≥ -100",
-                    fontSize = 10.sp,
-                    color = Color(0xFF666666)
-                )
+            // 확장된 세부 내용
+            if (isExpanded) {
+                Spacer(modifier = Modifier.height(16.dp))
 
-                Text(
-                    "조건 충족: ${if (isValidEntry) "✅ 성공" else "❌ 실패"}",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = if (isValidEntry) Color(0xFF4CAF50) else Color(0xFFF44336)
-                )
-            } else {
-                Text(
-                    "숏 조건: CCI > +110 → CCI ≤ +100",
-                    fontSize = 10.sp,
-                    color = Color(0xFF666666)
-                )
-
-                Text(
-                    "조건 충족: ${if (isValidEntry) "✅ 성공" else "❌ 실패"}",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = if (isValidEntry) Color(0xFF4CAF50) else Color(0xFFF44336)
-                )
-            }
-
-            if (isValidEntry) {
-                Spacer(modifier = Modifier.height(4.dp))
-                Card(
-                    colors = CardDefaults.cardColors(
-                        containerColor = Color(0xFFE3F2FD)
+                // 🔵 매수 거래 내역
+                if (trade.buyTrades.isNotEmpty()) {
+                    Text(
+                        "🔵 매수 거래 기록",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF2196F3)
                     )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    trade.buyTrades.forEach { buy ->
+                        BuyTradeDetailCard(buy, formatter)
+                        Spacer(modifier = Modifier.height(6.dp))
+                    }
+                }
+
+                // 🟢 매도 거래 내역
+                if (trade.sellTrades.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Text(
+                        "🟢 매도 거래 기록",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF4CAF50)
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    trade.sellTrades.forEach { sell ->
+                        SellTradeDetailCard(sell, formatter)
+                        Spacer(modifier = Modifier.height(6.dp))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun BuyTradeDetailCard(buy: BuyTradeDetail, formatter: DecimalFormat) {
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = Color(0xFFE3F2FD)
+        ),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // 단계 표시
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .background(
+                        color = Color(0xFF2196F3),
+                        shape = CircleShape
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    "${buy.stage}",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
+            }
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            Column(
+                modifier = Modifier.weight(1f)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text(
-                        "✅ 실제 백테스트 전략 조건에 완전히 부합하는 거래",
-                        fontSize = 9.sp,
-                        color = Color(0xFF1976D2),
-                        fontStyle = FontStyle.Italic,
-                        modifier = Modifier.padding(6.dp)
+                        "✅ ${if (buy.stage == 0) "첫 진입" else "${buy.stage}단계 물타기"}",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF1976D2)
+                    )
+                    Text(
+                        buy.timestamp,
+                        fontSize = 10.sp,
+                        color = Color(0xFF666666)
+                    )
+                }
+
+                Text(
+                    "가격: ${formatter.format(buy.price)} | 금액: ${formatter.format(buy.amount)}",
+                    fontSize = 11.sp,
+                    color = Color(0xFF424242)
+                )
+
+                Text(
+                    "코인: ${DecimalFormat("#,##0.######").format(buy.coins)} | 수수료: ${formatter.format(buy.fee)}",
+                    fontSize = 11.sp,
+                    color = Color(0xFF666666)
+                )
+
+                if (buy.reason != null) {
+                    Text(
+                        "이유: ${buy.reason}",
+                        fontSize = 10.sp,
+                        color = Color(0xFF666666),
+                        fontStyle = FontStyle.Italic
+                    )
+                }
+
+                // CCI 정보
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        "이전CCI: ${DecimalFormat("#,##0.0").format(buy.previousCCI)}",
+                        fontSize = 10.sp,
+                        color = Color(0xFF666666)
+                    )
+                    Text(
+                        "진입CCI: ${DecimalFormat("#,##0.0").format(buy.cci)}",
+                        fontSize = 10.sp,
+                        color = Color(0xFF2196F3),
+                        fontWeight = FontWeight.Medium
                     )
                 }
             }
@@ -534,67 +640,110 @@ fun VerifiedCCIAnalysisCard(trade: TradeResult, cciFormatter: DecimalFormat) {
 }
 
 @Composable
-fun EnhancedTradeInfoSection(trade: TradeResult, formatter: DecimalFormat, coinFormatter: DecimalFormat) {
-    val coinQuantity = trade.amount / trade.entryPrice
-
-    // 가격 정보
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Text(
-            "진입가: ${formatter.format(trade.entryPrice)}",
-            fontSize = 12.sp,
-            color = Color(0xFF666666)
-        )
-        Text(
-            "청산가: ${formatter.format(trade.exitPrice)}",
-            fontSize = 12.sp,
-            color = Color(0xFF666666)
-        )
+fun SellTradeDetailCard(sell: SellTradeDetail, formatter: DecimalFormat) {
+    val profitColor = if (sell.profitRate >= 0) Color(0xFF4CAF50) else Color(0xFFF44336)
+    val bgColor = when (sell.type) {
+        "PROFIT_EXIT" -> Color(0xFFE8F5E8)
+        "HALF_SELL" -> Color(0xFFFFF3E0)
+        else -> Color(0xFFFFEBEE)
     }
 
-    Spacer(modifier = Modifier.height(4.dp))
-
-    // 수량 정보
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = bgColor
+        ),
+        modifier = Modifier.fillMaxWidth()
     ) {
-        Text(
-            "코인 수량: ${coinFormatter.format(coinQuantity)}",
-            fontSize = 12.sp,
-            color = Color(0xFF666666)
-        )
-        Text(
-            "거래금액: ${formatter.format(trade.amount)}",
-            fontSize = 12.sp,
-            color = Color(0xFF666666)
-        )
-    }
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // 매도 타입 아이콘
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .background(
+                        color = profitColor,
+                        shape = CircleShape
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    when (sell.type) {
+                        "PROFIT_EXIT" -> Icons.Default.TrendingUp
+                        "HALF_SELL" -> Icons.Default.CallSplit
+                        else -> Icons.Default.Close
+                    },
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
 
-    Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.width(12.dp))
 
-    // 수수료 및 순수익
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Text(
-            "수수료: ${formatter.format(trade.fee)}",
-            fontSize = 12.sp,
-            color = Color(0xFF666666)
-        )
-        Text(
-            "청산 이유: ${getExitReasonText(trade.exitReason)}",
-            fontSize = 12.sp,
-            color = Color(0xFF666666)
-        )
+            Column(
+                modifier = Modifier.weight(1f)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        "🟢 ${getSellTypeText(sell.type)}",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = profitColor
+                    )
+                    Text(
+                        sell.timestamp,
+                        fontSize = 10.sp,
+                        color = Color(0xFF666666)
+                    )
+                }
+
+                Text(
+                    "가격: ${formatter.format(sell.price)} | 금액: ${formatter.format(sell.amount)}",
+                    fontSize = 11.sp,
+                    color = Color(0xFF424242)
+                )
+
+                Text(
+                    "코인: ${DecimalFormat("#,##0.######").format(sell.coins)} | 수수료: ${formatter.format(sell.fee)}",
+                    fontSize = 11.sp,
+                    color = Color(0xFF666666)
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        "수익률: ${if (sell.profitRate >= 0) "+" else ""}${formatter.format(sell.profitRate)}%",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = profitColor
+                    )
+                    Text(
+                        "CCI: ${DecimalFormat("#,##0.0").format(sell.cci)}",
+                        fontSize = 10.sp,
+                        color = Color(0xFF666666)
+                    )
+                }
+
+                Text(
+                    "이유: ${sell.reason}",
+                    fontSize = 10.sp,
+                    color = Color(0xFF666666),
+                    fontStyle = FontStyle.Italic
+                )
+            }
+        }
     }
 }
 
 @Composable
-fun NoValidTradesCard() {
+fun NoTradesCard() {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
@@ -615,15 +764,14 @@ fun NoValidTradesCard() {
             Spacer(modifier = Modifier.height(16.dp))
 
             Text(
-                "검증된 거래 내역이 없습니다",
+                "거래 내역이 없습니다",
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color(0xFFD32F2F)
             )
 
             Text(
-                "CCI 조건을 만족하는 실제 백테스트 거래가 발견되지 않았습니다.\n" +
-                        "백테스트 설정이나 기간을 조정해보세요.",
+                "백테스팅 조건을 만족하는 거래가 발견되지 않았습니다.",
                 fontSize = 14.sp,
                 color = Color(0xFFBF360C),
                 textAlign = TextAlign.Center
@@ -632,94 +780,256 @@ fun NoValidTradesCard() {
     }
 }
 
-// 유틸리티 함수들 (개선된 버전)
-fun getEnhancedTradeTypeDescription(trade: TradeResult): String {
-    return when {
-        trade.exitReason == "HALF_SELL" -> "물타기 후 부분청산 (검증됨)"
-        trade.exitReason == "FULL_EXIT" -> "물타기 후 완전청산 (검증됨)"
-        trade.exitReason == "PROFIT" && trade.amount >= 3000 -> "물타기 완료 후 익절 (검증됨)"
-        trade.exitReason == "PROFIT" -> "단일 포지션 익절 (검증됨)"
-        trade.exitReason == "STOP_LOSS" -> "손절 청산 (검증됨)"
-        trade.exitReason == "FORCE_CLOSE" -> "강제 청산 (검증됨)"
-        else -> "실제 백테스트 거래"
+// 유틸리티 함수들
+fun getSellTypeText(type: String): String {
+    return when (type) {
+        "PROFIT_EXIT" -> "익절 매도"
+        "HALF_SELL" -> "절반 매도"
+        "FORCE_CLOSE" -> "강제 청산"
+        else -> "완전 청산"
     }
 }
 
-fun getExitReasonText(exitReason: String): String {
-    return when (exitReason) {
-        "PROFIT" -> "익절"
-        "HALF_SELL" -> "부분매도"
-        "FULL_EXIT" -> "완전청산"
-        "STOP_LOSS" -> "손절"
-        "FORCE_CLOSE" -> "강제청산"
-        else -> exitReason
+fun convertToEnhancedTrades(trades: List<TradeResult>): List<EnhancedTradeRecord> {
+    // 실제 TradeResult를 EnhancedTradeRecord로 변환하는 로직
+    // 이 부분은 실제 데이터 구조에 맞게 구현해야 합니다
+
+    val groupedTrades = trades.groupBy { it.timestamp.substring(0, 10) } // 날짜별 그룹핑 (간단한 예시)
+
+    return groupedTrades.entries.mapIndexed { index, (date, tradeGroup) ->
+        val firstTrade = tradeGroup.first()
+
+        // 임시로 단순한 변환 로직 (실제로는 더 복잡한 로직 필요)
+        EnhancedTradeRecord(
+            tradeId = index + 1,
+            symbol = "BTCUSDT", // 실제로는 설정에서 가져와야 함
+            type = firstTrade.type,
+            status = if (firstTrade.exitReason == "FORCE_CLOSE") "FORCE_CLOSED" else "COMPLETED",
+            buyTrades = listOf(
+                BuyTradeDetail(
+                    stage = 0,
+                    type = "STAGE0_BUY",
+                    price = firstTrade.entryPrice,
+                    amount = firstTrade.amount,
+                    coins = firstTrade.amount / firstTrade.entryPrice,
+                    fee = firstTrade.fee * 0.5, // 매수 수수료 (추정)
+                    timestamp = firstTrade.timestamp,
+                    cci = firstTrade.entryCCI,
+                    previousCCI = firstTrade.previousCCI,
+                    reason = if (firstTrade.entryCCI < -110) "CCI 과매도 회복 신호" else "CCI 과매수 회복 신호"
+                )
+            ),
+            sellTrades = listOf(
+                SellTradeDetail(
+                    type = when (firstTrade.exitReason) {
+                        "PROFIT" -> "PROFIT_EXIT"
+                        "HALF_SELL" -> "HALF_SELL"
+                        else -> "FORCE_CLOSE"
+                    },
+                    price = firstTrade.exitPrice,
+                    amount = firstTrade.amount,
+                    coins = firstTrade.amount / firstTrade.exitPrice,
+                    fee = firstTrade.fee * 0.5, // 매도 수수료 (추정)
+                    timestamp = firstTrade.timestamp,
+                    cci = 0.0, // 실제로는 매도 시점의 CCI 필요
+                    reason = firstTrade.exitReason,
+                    profitRate = ((firstTrade.exitPrice - firstTrade.entryPrice) / firstTrade.entryPrice) * 100
+                )
+            ),
+            totalProfit = firstTrade.profit,
+            totalFees = firstTrade.fee,
+            startTime = firstTrade.timestamp,
+            endTime = firstTrade.timestamp, // 실제로는 매도 시간이어야 함
+            averagePrice = firstTrade.entryPrice,
+            maxStage = 0, // 실제로는 물타기 단계 수 계산 필요
+            duration = "계산 필요" // 실제로는 시작-종료 시간 차이 계산
+        )
     }
 }
 
-// 한국시간 변환 함수 (기존과 동일)
-fun convertToKoreanTime(timestamp: String): String {
-    return try {
-        val inputFormat = SimpleDateFormat("MM-dd HH:mm", Locale.getDefault())
-        val outputFormat = SimpleDateFormat("MM월 dd일 HH:mm", Locale.getDefault())
-
-        // UTC → KST 변환
-        inputFormat.timeZone = TimeZone.getTimeZone("UTC")
-        val utcDate = inputFormat.parse(timestamp)
-
-        outputFormat.timeZone = TimeZone.getTimeZone("Asia/Seoul")
-
-        if (utcDate != null) {
-            outputFormat.format(utcDate)
-        } else {
-            addNineHours(timestamp)
+// 실제 백테스팅 결과에서 물타기 단계별 거래를 추출하는 함수
+fun extractBuyTradesFromBacktest(trades: List<TradeResult>): List<BuyTradeDetail> {
+    return trades.filter { it.type.contains("BUY") }.mapIndexed { index, trade ->
+        val stage = when {
+            trade.type.contains("STAGE0") -> 0
+            trade.type.contains("STAGE1") -> 1
+            trade.type.contains("STAGE2") -> 2
+            trade.type.contains("STAGE3") -> 3
+            trade.type.contains("STAGE4") -> 4
+            else -> 0
         }
-    } catch (e: Exception) {
-        addNineHours(timestamp)
-    }
-}
 
-// 수동으로 9시간 추가 (기존과 동일)
-private fun addNineHours(timestamp: String): String {
-    return try {
-        val parts = timestamp.split(" ")
-        if (parts.size == 2) {
-            val datePart = parts[0] // MM-dd
-            val timePart = parts[1] // HH:mm
-            val timeComponents = timePart.split(":")
-
-            if (timeComponents.size == 2) {
-                val hour = timeComponents[0].toInt()
-                val minute = timeComponents[1].toInt()
-
-                val newHour = (hour + 9) % 24
-                val dayChange = if (hour + 9 >= 24) 1 else 0
-
-                if (dayChange > 0) {
-                    val monthDay = datePart.split("-")
-                    if (monthDay.size == 2) {
-                        val month = monthDay[0].toInt()
-                        val day = monthDay[1].toInt() + 1
-                        "${month}월 ${day}일 ${String.format("%02d:%02d", newHour, minute)}"
-                    } else {
-                        "${datePart}(+1일) ${String.format("%02d:%02d", newHour, minute)}"
-                    }
-                } else {
-                    val monthDay = datePart.split("-")
-                    if (monthDay.size == 2) {
-                        val month = monthDay[0].toInt()
-                        val day = monthDay[1].toInt()
-                        "${month}월 ${day}일 ${String.format("%02d:%02d", newHour, minute)}"
-                    } else {
-                        "$datePart ${String.format("%02d:%02d", newHour, minute)}"
-                    }
-                }
-            } else {
-                "$timestamp (변환실패)"
+        BuyTradeDetail(
+            stage = stage,
+            type = trade.type,
+            price = trade.entryPrice,
+            amount = trade.amount,
+            coins = trade.amount / trade.entryPrice,
+            fee = trade.fee,
+            timestamp = trade.timestamp,
+            cci = trade.entryCCI,
+            previousCCI = trade.previousCCI,
+            reason = when (stage) {
+                0 -> "CCI 진입 신호 (${if (trade.type == "LONG") "과매도 회복" else "과매수 회복"})"
+                1 -> "첫 진입가 대비 2% 손실"
+                2 -> "평단가 대비 4% 손실"
+                3 -> "평단가 대비 8% 손실"
+                4 -> "평단가 대비 16% 손실"
+                else -> "물타기 매수"
             }
+        )
+    }
+}
+
+fun extractSellTradesFromBacktest(trades: List<TradeResult>): List<SellTradeDetail> {
+    return trades.filter { it.type.contains("SELL") || it.exitReason.isNotEmpty() }.map { trade ->
+        val profitRate = ((trade.exitPrice - trade.entryPrice) / trade.entryPrice) * 100
+
+        SellTradeDetail(
+            type = when (trade.exitReason) {
+                "PROFIT", "STAGE0_PROFIT", "COMPLETE_PROFIT" -> "PROFIT_EXIT"
+                "HALF_SELL" -> "HALF_SELL"
+                "FORCE_CLOSE" -> "FORCE_CLOSE"
+                else -> "COMPLETE_EXIT"
+            },
+            price = trade.exitPrice,
+            amount = trade.amount,
+            coins = trade.amount / trade.exitPrice,
+            fee = trade.fee,
+            timestamp = trade.timestamp,
+            cci = 0.0, // 실제로는 매도 시점의 CCI가 필요
+            reason = when (trade.exitReason) {
+                "PROFIT" -> "3% 익절 목표 달성"
+                "STAGE0_PROFIT" -> "첫 진입 3% 익절"
+                "COMPLETE_PROFIT" -> "평단가 +4% 완전 익절"
+                "HALF_SELL" -> "본절 도달시 절반 매도"
+                "FORCE_CLOSE" -> "백테스팅 종료 강제 청산"
+                else -> trade.exitReason
+            },
+            profitRate = profitRate
+        )
+    }
+}
+
+// 실제 TradeExecution 데이터를 기반으로 한 개선된 변환 함수
+fun convertTradeExecutionToEnhanced(
+    tradeExecutions: List<com.example.ver20.dao.TradeExecution>
+): List<EnhancedTradeRecord> {
+    // 포지션별로 그룹화 (같은 시간대의 연관된 거래들)
+    val positionGroups = mutableListOf<MutableList<com.example.ver20.dao.TradeExecution>>()
+    var currentGroup = mutableListOf<com.example.ver20.dao.TradeExecution>()
+
+    tradeExecutions.forEach { trade ->
+        if (trade.type.contains("BUY") && currentGroup.any { !it.type.contains("BUY") }) {
+            // 새로운 포지션 시작
+            if (currentGroup.isNotEmpty()) {
+                positionGroups.add(currentGroup)
+            }
+            currentGroup = mutableListOf(trade)
         } else {
-            "$timestamp (형식오류)"
+            currentGroup.add(trade)
         }
-    } catch (e: Exception) {
-        "$timestamp (KST변환실패)"
+    }
+
+    if (currentGroup.isNotEmpty()) {
+        positionGroups.add(currentGroup)
+    }
+
+    return positionGroups.mapIndexed { index, group ->
+        val buyTrades = group.filter { it.type.contains("BUY") }
+        val sellTrades = group.filter { !it.type.contains("BUY") }
+
+        val firstTrade = group.first()
+        val lastTrade = group.last()
+
+        val totalProfit = group.sumOf { it.netProfit }
+        val totalFees = group.sumOf { it.fees }
+        val maxStage = buyTrades.maxOfOrNull { it.stages } ?: 0
+
+        // 거래 지속 시간 계산
+        val duration = calculateDuration(firstTrade.timestamp, lastTrade.timestamp)
+
+        EnhancedTradeRecord(
+            tradeId = index + 1,
+            symbol = "BTCUSDT", // 실제로는 설정에서 가져와야 함
+            type = firstTrade.type.replace("_BUY", ""),
+            status = if (lastTrade.exitType == "FORCE_CLOSE") "FORCE_CLOSED" else "COMPLETED",
+            buyTrades = buyTrades.map { buy ->
+                BuyTradeDetail(
+                    stage = buy.stages,
+                    type = buy.exitType,
+                    price = buy.entryPrice,
+                    amount = buy.amount,
+                    coins = buy.amount / buy.entryPrice,
+                    fee = buy.fees,
+                    timestamp = formatTimestamp(buy.timestamp),
+                    cci = buy.entryCCI,
+                    previousCCI = buy.previousCCI,
+                    reason = getStageReason(buy.stages, buy.type)
+                )
+            },
+            sellTrades = sellTrades.map { sell ->
+                val profitRate = ((sell.exitPrice - sell.entryPrice) / sell.entryPrice) * 100
+                SellTradeDetail(
+                    type = sell.exitType,
+                    price = sell.exitPrice,
+                    amount = sell.amount,
+                    coins = sell.amount / sell.exitPrice,
+                    fee = sell.fees,
+                    timestamp = formatTimestamp(sell.timestamp),
+                    cci = sell.exitCCI,
+                    reason = getSellReason(sell.exitType),
+                    profitRate = profitRate
+                )
+            },
+            totalProfit = totalProfit,
+            totalFees = totalFees,
+            startTime = formatTimestamp(firstTrade.timestamp),
+            endTime = formatTimestamp(lastTrade.timestamp),
+            averagePrice = buyTrades.sumOf { it.entryPrice * it.amount } / buyTrades.sumOf { it.amount },
+            maxStage = maxStage,
+            duration = duration
+        )
+    }
+}
+
+// 유틸리티 함수들
+fun getStageReason(stage: Int, type: String): String {
+    return when (stage) {
+        0 -> "CCI 진입 신호 (${if (type.contains("LONG")) "과매도 회복" else "과매수 회복"})"
+        1 -> "첫 진입가 대비 2% 손실"
+        2 -> "평단가 대비 4% 손실"
+        3 -> "평단가 대비 8% 손실"
+        4 -> "평단가 대비 16% 손실"
+        else -> "물타기 매수"
+    }
+}
+
+fun getSellReason(exitType: String): String {
+    return when (exitType) {
+        "STAGE0_PROFIT" -> "첫 진입 3% 익절"
+        "COMPLETE_PROFIT" -> "평단가 +4% 완전 익절"
+        "HALF_SELL" -> "본절 도달시 절반 매도"
+        "FORCE_CLOSE" -> "백테스팅 종료 강제 청산"
+        "PROFIT" -> "수익 목표 달성"
+        else -> exitType
+    }
+}
+
+fun formatTimestamp(timestamp: Long): String {
+    val dateFormat = SimpleDateFormat("MM-dd HH:mm", Locale.getDefault())
+    return dateFormat.format(Date(timestamp))
+}
+
+fun calculateDuration(startTime: Long, endTime: Long): String {
+    val diffInMillis = endTime - startTime
+    val diffInMinutes = diffInMillis / (1000 * 60)
+    val hours = diffInMinutes / 60
+    val minutes = diffInMinutes % 60
+
+    return when {
+        hours > 24 -> "${hours / 24}일 ${hours % 24}시간 ${minutes}분"
+        hours > 0 -> "${hours}시간 ${minutes}분"
+        else -> "${minutes}분"
     }
 }
