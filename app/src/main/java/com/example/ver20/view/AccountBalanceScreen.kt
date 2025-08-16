@@ -1,3 +1,5 @@
+// AccountBalanceScreen.kt - 기존 파일을 이 내용으로 교체
+
 package com.example.ver20.view
 
 import androidx.compose.foundation.layout.*
@@ -18,6 +20,8 @@ import androidx.compose.ui.unit.sp
 import com.example.ver20.dao.*
 import kotlinx.coroutines.launch
 import java.text.DecimalFormat
+import android.util.Log
+import kotlin.math.abs
 
 @Composable
 fun AccountBalanceScreen(
@@ -26,7 +30,7 @@ fun AccountBalanceScreen(
 ) {
     val context = LocalContext.current
     val apiKeyService = remember { ApiKeyService(context) }
-    val accountService = remember { RealAccountService() } // 실제 서비스 사용
+    val binanceService = remember { RealBinanceService() } // 기존 서비스 사용
     val coroutineScope = rememberCoroutineScope()
 
     // 상태 변수들
@@ -34,12 +38,11 @@ fun AccountBalanceScreen(
     var isTestnet by remember { mutableStateOf(true) }
     var apiKeyData by remember { mutableStateOf<ApiKeyData?>(null) }
 
-    // 실제 데이터 상태
-    var accountInfo by remember { mutableStateOf<AccountInfo?>(null) }
-    var balances by remember { mutableStateOf<List<BalanceInfo>>(emptyList()) }
+    // 데이터 상태
+    var spotAccountInfo by remember { mutableStateOf<AccountInfo?>(null) }
+    var futuresAccountInfo by remember { mutableStateOf<FuturesAccountInfo?>(null) }
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
-    var totalBalanceUSD by remember { mutableStateOf(0.0) }
 
     // 탭별 자산 분류
     var spotBalances by remember { mutableStateOf<List<BalanceInfo>>(emptyList()) }
@@ -48,11 +51,58 @@ fun AccountBalanceScreen(
     var spotTotalUSD by remember { mutableStateOf(0.0) }
     var earnTotalUSD by remember { mutableStateOf(0.0) }
     var futuresTotalUSD by remember { mutableStateOf(0.0) }
+    var totalBalanceUSD by remember { mutableStateOf(0.0) }
 
-    // 가격 정보 (실시간 USD 환산용)
-    var priceMap by remember { mutableStateOf<Map<String, Double>>(emptyMap()) }
+    // 통합 데이터 로드 함수
+    fun loadIntegratedData() {
+        if (apiKeyData == null) return
 
-    // API 키 상태 확인 및 계좌 정보 로드
+        isLoading = true
+        errorMessage = null
+
+        coroutineScope.launch {
+            try {
+                Log.d("AccountScreen", "🚀 통합 계좌 데이터 로드 시작")
+
+                // 기존 RealBinanceService의 새로운 통합 함수 사용
+                val (spotResponse, futuresInfo, priceMap) = binanceService.getIntegratedAccountInfo(apiKeyData!!)
+
+                if (spotResponse.success && spotResponse.data != null) {
+                    spotAccountInfo = spotResponse.data
+                    futuresAccountInfo = futuresInfo
+
+                    // 자산 분류
+                    classifyIntegratedAssets(
+                        spotBalances = spotResponse.data.balances,
+                        futuresInfo = futuresInfo,
+                        priceMap = priceMap
+                    ) { spot, earn, futures, spotTotal, earnTotal, futuresTotal ->
+                        spotBalances = spot
+                        earnBalances = earn
+                        futuresBalances = futures
+                        spotTotalUSD = spotTotal
+                        earnTotalUSD = earnTotal
+                        futuresTotalUSD = futuresTotal
+                        totalBalanceUSD = spotTotal + earnTotal + futuresTotal
+
+                        Log.d("AccountScreen", "💰 총 자산: Spot $${spotTotal}, Earn $${earnTotal}, Futures $${futuresTotal}")
+                    }
+
+                    errorMessage = null
+                } else {
+                    errorMessage = spotResponse.message ?: "계좌 정보 조회 실패"
+                }
+
+            } catch (e: Exception) {
+                Log.e("AccountScreen", "❌ 통합 데이터 로드 예외: ${e.message}")
+                errorMessage = "데이터 로드 오류: ${e.message}"
+            } finally {
+                isLoading = false
+            }
+        }
+    }
+
+    // 초기 데이터 로드
     LaunchedEffect(Unit) {
         val keys = apiKeyService.getApiKeys()
         hasApiKeys = keys != null
@@ -60,32 +110,7 @@ fun AccountBalanceScreen(
 
         if (keys != null) {
             isTestnet = keys.isTestnet
-            isLoading = true
-
-            // 실제 바이낸스 API 호출
-            loadRealAccountData(accountService, keys) { account, balanceList, total, error ->
-                accountInfo = account
-                balances = balanceList
-                totalBalanceUSD = total
-                errorMessage = error
-                isLoading = false
-
-                // 가격 정보 로드 및 탭별 자산 분류
-                if (account != null && error == null) {
-                    coroutineScope.launch {
-                        priceMap = accountService.getPricesForUSDCalculation(keys.isTestnet)
-
-                        classifyRealBalancesByTab(balanceList, priceMap) { spot, earn, futures, spotTotal, earnTotal, futuresTotal ->
-                            spotBalances = spot
-                            earnBalances = earn
-                            futuresBalances = futures
-                            spotTotalUSD = spotTotal
-                            earnTotalUSD = earnTotal
-                            futuresTotalUSD = futuresTotal
-                        }
-                    }
-                }
-            }
+            loadIntegratedData()
         }
     }
 
@@ -100,48 +125,20 @@ fun AccountBalanceScreen(
         Column(
             modifier = Modifier.padding(16.dp)
         ) {
-            // 상단 헤더
-            AccountBalanceHeader(
+            // 헤더
+            AccountHeader(
                 hasApiKeys = hasApiKeys,
                 isTestnet = isTestnet,
                 totalBalanceUSD = totalBalanceUSD,
-                onRefreshClick = {
-                    if (apiKeyData != null) {
-                        isLoading = true
-                        errorMessage = null
-                        coroutineScope.launch {
-                            loadRealAccountData(accountService, apiKeyData!!) { account, balanceList, total, error ->
-                                accountInfo = account
-                                balances = balanceList
-                                totalBalanceUSD = total
-                                errorMessage = error
-                                isLoading = false
-
-                                // 가격 정보 업데이트 및 탭별 자산 재분류
-                                if (account != null && error == null) {
-                                    coroutineScope.launch {
-                                        priceMap = accountService.getPricesForUSDCalculation(apiKeyData!!.isTestnet)
-
-                                        classifyRealBalancesByTab(balanceList, priceMap) { spot, earn, futures, spotTotal, earnTotal, futuresTotal ->
-                                            spotBalances = spot
-                                            earnBalances = earn
-                                            futuresBalances = futures
-                                            spotTotalUSD = spotTotal
-                                            earnTotalUSD = earnTotal
-                                            futuresTotalUSD = futuresTotal
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                },
+                spotTotalUSD = spotTotalUSD,
+                futuresTotalUSD = futuresTotalUSD,
+                onRefreshClick = { loadIntegratedData() },
                 onSettingsClick = onShowSecuritySettings
             )
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // 컨텐츠 영역
+            // 컨텐츠
             when {
                 !hasApiKeys -> {
                     NoApiKeyContentSection(onShowSecuritySettings = onShowSecuritySettings)
@@ -152,48 +149,19 @@ fun AccountBalanceScreen(
                 errorMessage != null -> {
                     ErrorContentSection(
                         errorMessage = errorMessage!!,
-                        onRetryClick = {
-                            if (apiKeyData != null) {
-                                isLoading = true
-                                errorMessage = null
-                                coroutineScope.launch {
-                                    loadRealAccountData(accountService, apiKeyData!!) { account, balanceList, total, error ->
-                                        accountInfo = account
-                                        balances = balanceList
-                                        totalBalanceUSD = total
-                                        errorMessage = error
-                                        isLoading = false
-
-                                        if (account != null && error == null) {
-                                            coroutineScope.launch {
-                                                priceMap = accountService.getPricesForUSDCalculation(apiKeyData!!.isTestnet)
-
-                                                classifyRealBalancesByTab(balanceList, priceMap) { spot, earn, futures, spotTotal, earnTotal, futuresTotal ->
-                                                    spotBalances = spot
-                                                    earnBalances = earn
-                                                    futuresBalances = futures
-                                                    spotTotalUSD = spotTotal
-                                                    earnTotalUSD = earnTotal
-                                                    futuresTotalUSD = futuresTotal
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
+                        onRetryClick = { loadIntegratedData() }
                     )
                 }
-                accountInfo != null -> {
-                    EnhancedAccountContentSection(
-                        accountInfo = accountInfo!!,
+                spotAccountInfo != null -> {
+                    AccountContent(
+                        accountInfo = spotAccountInfo!!,
+                        futuresAccountInfo = futuresAccountInfo,
                         spotBalances = spotBalances,
                         earnBalances = earnBalances,
                         futuresBalances = futuresBalances,
                         spotTotalUSD = spotTotalUSD,
                         earnTotalUSD = earnTotalUSD,
-                        futuresTotalUSD = futuresTotalUSD,
-                        isTestnet = isTestnet
+                        futuresTotalUSD = futuresTotalUSD
                     )
                 }
                 else -> {
@@ -205,101 +173,99 @@ fun AccountBalanceScreen(
 }
 
 @Composable
-private fun AccountBalanceHeader(
+private fun AccountHeader(
     hasApiKeys: Boolean,
     isTestnet: Boolean,
     totalBalanceUSD: Double,
+    spotTotalUSD: Double,
+    futuresTotalUSD: Double,
     onRefreshClick: () -> Unit,
     onSettingsClick: () -> Unit
 ) {
     val formatter = DecimalFormat("$#,##0.00")
 
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column {
-            Text(
-                "계좌 조회",
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color(0xFF1976D2)
-            )
-            if (hasApiKeys) {
+    Column {
+        // 제목 및 버튼
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
                 Text(
-                    if (isTestnet) "🧪 테스트넷 모드" else "🔴 메인넷 모드",
-                    fontSize = 12.sp,
-                    color = if (isTestnet) Color(0xFFFF9800) else Color(0xFFF44336)
+                    "통합 계좌 조회",
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF1976D2)
                 )
+                if (hasApiKeys) {
+                    Text(
+                        if (isTestnet) "🧪 테스트넷" else "🔴 메인넷",
+                        fontSize = 12.sp,
+                        color = if (isTestnet) Color(0xFFFF9800) else Color(0xFFF44336)
+                    )
+                }
+            }
+
+            Row {
+                if (hasApiKeys) {
+                    IconButton(onClick = onRefreshClick) {
+                        Icon(Icons.Default.Refresh, contentDescription = "새로고침", tint = Color(0xFF2196F3))
+                    }
+                }
+                IconButton(onClick = onSettingsClick) {
+                    Icon(Icons.Default.Settings, contentDescription = "설정", tint = Color(0xFF2196F3))
+                }
             }
         }
 
-        Row(
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            if (hasApiKeys && totalBalanceUSD > 0) {
-                Column(
-                    horizontalAlignment = Alignment.End
+        // 자산 요약
+        if (hasApiKeys && totalBalanceUSD > 0) {
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFF3E5F5))
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(12.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly
                 ) {
-                    Text(
-                        "전체 자산",
-                        fontSize = 10.sp,
-                        color = Color.Gray
-                    )
-                    Text(
-                        formatter.format(totalBalanceUSD),
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF1976D2)
-                    )
+                    SummaryItem("총 자산", formatter.format(totalBalanceUSD), Color(0xFF7B1FA2))
+                    SummaryItem("Spot", formatter.format(spotTotalUSD), Color(0xFF2E7D32))
+                    SummaryItem("Futures", formatter.format(futuresTotalUSD), Color(0xFFC62828))
                 }
-                Spacer(modifier = Modifier.width(8.dp))
-            }
-
-            // 새로고침 버튼
-            if (hasApiKeys) {
-                IconButton(onClick = onRefreshClick) {
-                    Icon(
-                        Icons.Default.Refresh,
-                        contentDescription = "새로고침",
-                        tint = Color(0xFF2196F3)
-                    )
-                }
-            }
-
-            // 설정 버튼
-            IconButton(onClick = onSettingsClick) {
-                Icon(
-                    Icons.Default.Settings,
-                    contentDescription = "설정",
-                    tint = Color(0xFF2196F3)
-                )
             }
         }
     }
 }
 
 @Composable
-private fun EnhancedAccountContentSection(
+private fun SummaryItem(label: String, value: String, color: Color) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(label, fontSize = 10.sp, color = Color.Gray)
+        Text(value, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = color)
+    }
+}
+
+@Composable
+private fun AccountContent(
     accountInfo: AccountInfo,
+    futuresAccountInfo: FuturesAccountInfo?,
     spotBalances: List<BalanceInfo>,
     earnBalances: List<BalanceInfo>,
     futuresBalances: List<BalanceInfo>,
     spotTotalUSD: Double,
     earnTotalUSD: Double,
-    futuresTotalUSD: Double,
-    isTestnet: Boolean
+    futuresTotalUSD: Double
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
 
     Column {
-        // 깔끔한 탭 메뉴 (제목만)
+        // 탭 메뉴
         Card(
             modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(
-                containerColor = Color.White
-            )
+            colors = CardDefaults.cardColors(containerColor = Color.White)
         ) {
             TabRow(
                 selectedTabIndex = selectedTab,
@@ -307,16 +273,29 @@ private fun EnhancedAccountContentSection(
                 containerColor = Color.White,
                 contentColor = Color(0xFF1976D2)
             ) {
-                val tabTitles = listOf("Spot", "Earn", "Futures")
+                val tabs = listOf(
+                    "Spot" to spotBalances.size,
+                    "Earn" to earnBalances.size,
+                    "Futures" to futuresBalances.size
+                )
 
-                tabTitles.forEachIndexed { index, title ->
+                tabs.forEachIndexed { index, (title, count) ->
                     Tab(
                         text = {
-                            Text(
-                                title,
-                                fontWeight = if (selectedTab == index) FontWeight.Bold else FontWeight.Normal,
-                                fontSize = 16.sp
-                            )
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(
+                                    title,
+                                    fontWeight = if (selectedTab == index) FontWeight.Bold else FontWeight.Normal,
+                                    fontSize = 16.sp
+                                )
+                                if (count > 0) {
+                                    Text(
+                                        "($count)",
+                                        fontSize = 10.sp,
+                                        color = if (selectedTab == index) Color(0xFF1976D2) else Color.Gray
+                                    )
+                                }
+                            }
                         },
                         selected = selectedTab == index,
                         onClick = { selectedTab = index },
@@ -329,74 +308,248 @@ private fun EnhancedAccountContentSection(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        // 탭별 컨텐츠
+        // 탭 컨텐츠
         when (selectedTab) {
-            0 -> EnhancedSpotBalanceContent(spotBalances, spotTotalUSD)
-            1 -> EnhancedEarnBalanceContent(earnBalances, earnTotalUSD)
-            2 -> EnhancedFuturesBalanceContent(futuresBalances, futuresTotalUSD)
+            0 -> BalanceContent("Spot 자산", spotBalances, spotTotalUSD, Color(0xFFF3E5F5), Color(0xFF7B1FA2))
+            1 -> BalanceContent("Earn 자산", earnBalances, earnTotalUSD, Color(0xFFE8F5E8), Color(0xFF2E7D32))
+            2 -> FuturesContent(futuresBalances, futuresTotalUSD, futuresAccountInfo)
         }
     }
 }
 
 @Composable
-private fun EnhancedBalanceListCard(
+private fun BalanceContent(
     title: String,
     balances: List<BalanceInfo>,
     totalUSD: Double,
-    cardColor: Color = Color.White,
-    titleColor: Color = Color(0xFF1976D2)
+    cardColor: Color,
+    titleColor: Color
 ) {
     val formatter = DecimalFormat("$#,##0.00")
 
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = cardColor
-        )
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp)
+    if (balances.isNotEmpty()) {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = cardColor)
         ) {
-            // 헤더 (제목 + 총 금액)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    "$title (${balances.size}개)",
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = titleColor
-                )
+            Column(modifier = Modifier.padding(16.dp)) {
+                // 헤더
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "$title (${balances.size}개)",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = titleColor
+                    )
 
-                if (totalUSD > 0) {
-                    Card(
-                        colors = CardDefaults.cardColors(
-                            containerColor = Color(0xFFE8F5E8)
-                        )
-                    ) {
-                        Text(
-                            "총 ${formatter.format(totalUSD)}",
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF2E7D32),
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                        )
+                    if (totalUSD > 0) {
+                        Card(colors = CardDefaults.cardColors(containerColor = Color(0xFFE8F5E8))) {
+                            Text(
+                                "총 ${formatter.format(totalUSD)}",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF2E7D32),
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            )
+                        }
                     }
                 }
-            }
 
-            if (balances.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(12.dp))
 
                 LazyColumn(
                     modifier = Modifier.heightIn(max = 300.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    items(balances) { balance ->
-                        EnhancedBalanceRowComponent(balance)
-                    }
+                    items(balances) { balance -> BalanceRow(balance) }
+                }
+            }
+        }
+    } else {
+        EmptyCard("${title}이 없습니다", if (title.contains("Spot")) "💰" else if (title.contains("Earn")) "🌱" else "📈")
+    }
+}
+
+@Composable
+private fun FuturesContent(
+    futuresBalances: List<BalanceInfo>,
+    futuresTotalUSD: Double,
+    futuresAccountInfo: FuturesAccountInfo?
+) {
+    Column {
+        // Futures 계좌 요약
+        if (futuresAccountInfo != null) {
+            FuturesSummaryCard(futuresAccountInfo)
+            Spacer(modifier = Modifier.height(8.dp))
+        }
+
+        // Futures 자산
+        BalanceContent("Futures 자산", futuresBalances, futuresTotalUSD, Color(0xFFFFEBEE), Color(0xFFC62828))
+
+        // 포지션 정보
+        if (futuresAccountInfo?.positions?.isNotEmpty() == true) {
+            Spacer(modifier = Modifier.height(8.dp))
+            PositionsCard(futuresAccountInfo.positions)
+        }
+    }
+}
+
+@Composable
+private fun FuturesSummaryCard(futuresInfo: FuturesAccountInfo) {
+    val formatter = DecimalFormat("$#,##0.00")
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFFE8F5E8))
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                "📈 Futures 계좌 요약",
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFF2E7D32)
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
+                SummaryItem("총 잔고", formatter.format(futuresInfo.totalWalletBalance), Color(0xFF2E7D32))
+                SummaryItem(
+                    "미실현 PnL",
+                    formatter.format(futuresInfo.totalUnrealizedProfit),
+                    if (futuresInfo.totalUnrealizedProfit >= 0) Color(0xFF4CAF50) else Color(0xFFF44336)
+                )
+                SummaryItem("사용가능", formatter.format(futuresInfo.availableBalance), Color(0xFF1976D2))
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // 계좌 상태
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
+                StatusChip("거래", futuresInfo.canTrade)
+                StatusChip("입금", futuresInfo.canDeposit)
+                StatusChip("출금", futuresInfo.canWithdraw)
+            }
+        }
+    }
+}
+
+@Composable
+private fun StatusChip(label: String, enabled: Boolean) {
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = if (enabled) Color(0xFFE8F5E8) else Color(0xFFFFEBEE)
+        )
+    ) {
+        Text(
+            label,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Medium,
+            color = if (enabled) Color(0xFF2E7D32) else Color(0xFFC62828),
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+        )
+    }
+}
+
+@Composable
+private fun PositionsCard(positions: List<FuturesPositionInfo>) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF3E0))
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                "📊 활성 포지션 (${positions.size}개)",
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFFE65100)
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            LazyColumn(
+                modifier = Modifier.heightIn(max = 200.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                items(positions) { position -> PositionRow(position) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PositionRow(position: FuturesPositionInfo) {
+    val formatter = DecimalFormat("#,##0.########")
+    val usdFormatter = DecimalFormat("$#,##0.00")
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // 심볼과 방향
+            Column(modifier = Modifier.weight(2f)) {
+                Text(
+                    position.symbol,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF1976D2)
+                )
+                Row {
+                    Text(
+                        position.positionSide,
+                        fontSize = 10.sp,
+                        color = if (position.positionSide == "LONG") Color(0xFF4CAF50) else Color(0xFFF44336),
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        "${position.leverage}x",
+                        fontSize = 10.sp,
+                        color = Color(0xFFFF9800),
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+
+            // 포지션 정보
+            Column(
+                horizontalAlignment = Alignment.End,
+                modifier = Modifier.weight(3f)
+            ) {
+                Text(
+                    formatter.format(abs(position.positionAmt)),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = Color(0xFF2E7D32)
+                )
+                Text(
+                    usdFormatter.format(position.unrealizedProfit),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (position.unrealizedProfit >= 0) Color(0xFF4CAF50) else Color(0xFFF44336)
+                )
+                if (position.entryPrice > 0) {
+                    Text(
+                        "@${formatter.format(position.entryPrice)}",
+                        fontSize = 9.sp,
+                        color = Color.Gray
+                    )
                 }
             }
         }
@@ -404,127 +557,30 @@ private fun EnhancedBalanceListCard(
 }
 
 @Composable
-private fun EnhancedSpotBalanceContent(balances: List<BalanceInfo>, totalUSD: Double) {
-    if (balances.isNotEmpty()) {
-        EnhancedBalanceListCard(
-            title = "Spot 자산",
-            balances = balances,
-            totalUSD = totalUSD,
-            cardColor = Color(0xFFF3E5F5),
-            titleColor = Color(0xFF7B1FA2)
-        )
-    } else {
-        EmptyBalanceCard("Spot 자산이 없습니다", "💰")
-    }
-}
-
-@Composable
-private fun EnhancedEarnBalanceContent(balances: List<BalanceInfo>, totalUSD: Double) {
-    if (balances.isNotEmpty()) {
-        EnhancedBalanceListCard(
-            title = "Earn 자산",
-            balances = balances,
-            totalUSD = totalUSD,
-            cardColor = Color(0xFFE8F5E8),
-            titleColor = Color(0xFF2E7D32)
-        )
-    } else {
-        EmptyBalanceCard("Earn 자산이 없습니다", "🌱")
-    }
-}
-
-@Composable
-private fun EnhancedFuturesBalanceContent(balances: List<BalanceInfo>, totalUSD: Double) {
-    if (balances.isNotEmpty()) {
-        EnhancedBalanceListCard(
-            title = "Futures 자산",
-            balances = balances,
-            totalUSD = totalUSD,
-            cardColor = Color(0xFFFFEBEE),
-            titleColor = Color(0xFFC62828)
-        )
-    } else {
-        EmptyBalanceCard("Futures 자산이 없습니다", "📈")
-    }
-}
-
-@Composable
-private fun EmptyBalanceCard(message: String, emoji: String = "💼") {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = Color(0xFFFFF3E0)
-        )
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(32.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(
-                    emoji,
-                    fontSize = 32.sp
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    message,
-                    fontSize = 16.sp,
-                    color = Color(0xFFE65100)
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun EnhancedBalanceRowComponent(balance: BalanceInfo) {
+private fun BalanceRow(balance: BalanceInfo) {
     val formatter = DecimalFormat("#,##0.########")
     val totalAmount = BalanceUtils.getTotalBalance(balance)
     val lockedAmount = balance.locked.toDoubleOrNull() ?: 0.0
     val freeAmount = balance.free.toDoubleOrNull() ?: 0.0
 
-    // 실제 USD 가격 계산 (priceMap 사용)
-    // 여기서는 간단한 계산을 사용하지만, 실제로는 priceMap을 전달받아야 함
-    val usdValue = when (balance.asset) {
-        "USDT", "BUSD", "USDC", "FDUSD" -> totalAmount
-        else -> 0.0 // 실제로는 priceMap에서 조회해야 함
-    }
-
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = Color(0xFFF8F9FA)
-        ),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFFF8F9FA)),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
+            modifier = Modifier.fillMaxWidth().padding(12.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             // 코인 정보
-            Column(
-                modifier = Modifier.weight(2f)
-            ) {
+            Column(modifier = Modifier.weight(2f)) {
                 Text(
                     balance.asset,
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color(0xFF1976D2)
                 )
-                if (usdValue > 0) {
-                    Text(
-                        "${String.format("%.2f", usdValue)}",
-                        fontSize = 10.sp,
-                        color = Color(0xFF4CAF50)
-                    )
-                }
             }
 
             // 잔고 정보
@@ -532,7 +588,6 @@ private fun EnhancedBalanceRowComponent(balance: BalanceInfo) {
                 horizontalAlignment = Alignment.End,
                 modifier = Modifier.weight(3f)
             ) {
-                // 총 잔고
                 Text(
                     formatter.format(totalAmount),
                     fontSize = 14.sp,
@@ -540,7 +595,6 @@ private fun EnhancedBalanceRowComponent(balance: BalanceInfo) {
                     color = Color(0xFF2E7D32)
                 )
 
-                // 자유 자산
                 if (freeAmount > 0) {
                     Text(
                         "자유: ${formatter.format(freeAmount)}",
@@ -549,7 +603,6 @@ private fun EnhancedBalanceRowComponent(balance: BalanceInfo) {
                     )
                 }
 
-                // 잠긴 자산
                 if (lockedAmount > 0) {
                     Text(
                         "잠김: ${formatter.format(lockedAmount)}",
@@ -562,7 +615,25 @@ private fun EnhancedBalanceRowComponent(balance: BalanceInfo) {
     }
 }
 
-// 기존 컴포넌트들 (변경 없음)
+@Composable
+private fun EmptyCard(message: String, emoji: String) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF3E0))
+    ) {
+        Box(
+            modifier = Modifier.fillMaxWidth().padding(32.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(emoji, fontSize = 32.sp)
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(message, fontSize = 16.sp, color = Color(0xFFE65100))
+            }
+        }
+    }
+}
+
 @Composable
 private fun NoApiKeyContentSection(onShowSecuritySettings: () -> Unit) {
     Column(
@@ -572,9 +643,7 @@ private fun NoApiKeyContentSection(onShowSecuritySettings: () -> Unit) {
         Spacer(modifier = Modifier.height(60.dp))
 
         Card(
-            colors = CardDefaults.cardColors(
-                containerColor = Color(0xFFFFF3E0)
-            ),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF3E0)),
             modifier = Modifier.fillMaxWidth(0.9f)
         ) {
             Column(
@@ -614,11 +683,7 @@ private fun NoApiKeyContentSection(onShowSecuritySettings: () -> Unit) {
                 ) {
                     Icon(Icons.Default.Security, contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        "API 키 설정",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Text("API 키 설정", fontSize = 14.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -628,37 +693,22 @@ private fun NoApiKeyContentSection(onShowSecuritySettings: () -> Unit) {
 @Composable
 private fun LoadingContentSection() {
     Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(300.dp),
+        modifier = Modifier.fillMaxWidth().height(300.dp),
         contentAlignment = Alignment.Center
     ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            CircularProgressIndicator(
-                color = Color(0xFF2196F3)
-            )
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            CircularProgressIndicator(color = Color(0xFF2196F3))
             Spacer(modifier = Modifier.height(16.dp))
-            Text(
-                "계좌 정보를 불러오는 중...",
-                fontSize = 16.sp,
-                color = Color.Gray
-            )
+            Text("계좌 정보를 불러오는 중...", fontSize = 16.sp, color = Color.Gray)
         }
     }
 }
 
 @Composable
-private fun ErrorContentSection(
-    errorMessage: String,
-    onRetryClick: () -> Unit
-) {
+private fun ErrorContentSection(errorMessage: String, onRetryClick: () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = Color(0xFFFFEBEE)
-        )
+        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFEBEE))
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
@@ -687,9 +737,7 @@ private fun ErrorContentSection(
             Spacer(modifier = Modifier.height(16.dp))
             Button(
                 onClick = onRetryClick,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFFF44336)
-                )
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF44336))
             ) {
                 Icon(Icons.Default.Refresh, contentDescription = null)
                 Spacer(modifier = Modifier.width(8.dp))
@@ -702,21 +750,9 @@ private fun ErrorContentSection(
 @Composable
 private fun EmptyContentSection() {
     Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(200.dp),
+        modifier = Modifier.fillMaxWidth().height(200.dp),
         contentAlignment = Alignment.Center
     ) {
-        Text(
-            "계좌 정보를 불러올 수 없습니다",
-            fontSize = 16.sp,
-            color = Color.Gray
-        )
+        Text("계좌 정보를 불러올 수 없습니다", fontSize = 16.sp, color = Color.Gray)
     }
 }
-
-// 데이터 클래스 (사용하지 않으므로 제거)
-
-// 헬퍼 함수들 (더미 데이터 함수들 제거)
-
-// 기존 더미 함수들은 RealBinanceService로 대체됨

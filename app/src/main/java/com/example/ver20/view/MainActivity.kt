@@ -1,3 +1,5 @@
+// MainActivity.kt - 백테스팅 탭 추가
+
 package com.example.ver20.view
 
 import android.os.Bundle
@@ -46,6 +48,7 @@ fun BinanceTraderApp() {
     val tabs = listOf(
         TabItem("가격조회", Icons.Default.Search),
         TabItem("계좌조회", Icons.Default.AccountBox),
+        TabItem("백테스팅", Icons.Default.Analytics), // 새로 추가
         TabItem("시세분석", Icons.Default.Info),
         TabItem("거래내역", Icons.Default.List)
     )
@@ -180,8 +183,9 @@ fun BinanceTraderApp() {
                         modifier = Modifier.padding(paddingValues),
                         onShowSecuritySettings = { showSecuritySettings = true }
                     )
-                    2 -> AnalysisScreen(modifier = Modifier.padding(paddingValues))
-                    3 -> TradeHistoryScreen(modifier = Modifier.padding(paddingValues))
+                    2 -> BacktestingScreen(modifier = Modifier.padding(paddingValues)) // 새로 추가
+                    3 -> AnalysisScreen(modifier = Modifier.padding(paddingValues))
+                    4 -> TradeHistoryScreen(modifier = Modifier.padding(paddingValues))
                 }
             }
         }
