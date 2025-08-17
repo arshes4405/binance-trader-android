@@ -520,9 +520,15 @@ fun RealCciPositionCard(
 
 @Composable
 fun CciBuyTradeDetailCard(buy: CciTradeExecution, formatter: DecimalFormat) {
+    // 거래 타입에 따른 색상 및 텍스트 결정
+    val isBuyAction = buy.type.contains("BUY") || buy.type.contains("STAGE") && buy.type.contains("BUY")
+    val cardColor = if (isBuyAction) Color(0xFFE3F2FD) else Color(0xFFFFF3E0)
+    val circleColor = if (isBuyAction) Color(0xFF2196F3) else Color(0xFFFF9800)
+    val actionText = if (isBuyAction) "✅ 매수" else "📤 매도"
+
     Card(
         colors = CardDefaults.cardColors(
-            containerColor = Color(0xFFE3F2FD)
+            containerColor = cardColor
         ),
         modifier = Modifier.fillMaxWidth()
     ) {
@@ -535,7 +541,7 @@ fun CciBuyTradeDetailCard(buy: CciTradeExecution, formatter: DecimalFormat) {
                 modifier = Modifier
                     .size(32.dp)
                     .background(
-                        color = Color(0xFF2196F3),
+                        color = circleColor,
                         shape = CircleShape
                     ),
                 contentAlignment = Alignment.Center
@@ -558,10 +564,10 @@ fun CciBuyTradeDetailCard(buy: CciTradeExecution, formatter: DecimalFormat) {
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text(
-                        "✅ ${getStageText(buy.stage)}",
+                        "$actionText ${getStageText(buy.stage)}",
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF1976D2)
+                        color = if (isBuyAction) Color(0xFF1976D2) else Color(0xFFE65100)
                     )
                     Text(
                         formatTimestamp(buy.timestamp),
@@ -599,7 +605,6 @@ fun CciBuyTradeDetailCard(buy: CciTradeExecution, formatter: DecimalFormat) {
         }
     }
 }
-
 @Composable
 fun CciSellTradeDetailCard(sell: CciTradeExecution, formatter: DecimalFormat) {
     val profitColor = if (sell.profitRate >= 0) Color(0xFF4CAF50) else Color(0xFFF44336)

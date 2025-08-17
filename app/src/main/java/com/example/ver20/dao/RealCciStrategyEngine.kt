@@ -1,4 +1,4 @@
-// RealCciStrategyEngine.kt - 실제 CCI 전략 구현
+// RealCciStrategyEngine.kt - 롱/숏 완전 분리 버전
 
 package com.example.ver20.dao
 
@@ -120,49 +120,51 @@ class RealCciStrategyEngine {
 
                 if (signal != null) {
                     positionId++
-                    currentPosition = CciPosition(
-                        type = signal,
-                        stages = mutableListOf(),
-                        currentStage = 0,
-                        timestamp = currentTimestamp,
-                        entryCCI = currentCCI,
-                        previousCCI = previousCCI
-                    )
 
-                    // 첫 진입 (1단계)
-                    val firstStage = executeStageEntry(
-                        position = currentPosition,
-                        price = currentPrice,
-                        stage = 0,
-                        amount = settings.startAmount,
-                        timestamp = currentTimestamp,
-                        cci = currentCCI,
-                        settings = settings
-                    )
+                    if (signal == "LONG") {
+                        // 롱 포지션 생성 및 실행
+                        val (longPosition, longTrades) = createAndExecuteLongPosition(
+                            positionId, currentPrice, currentTimestamp, currentCCI, previousCCI, settings
+                        )
+                        currentPosition = longPosition
+                        trades.addAll(longTrades)
+                    } else {
+                        // 숏 포지션 생성 및 실행
+                        val (shortPosition, shortTrades) = createAndExecuteShortPosition(
+                            positionId, currentPrice, currentTimestamp, currentCCI, previousCCI, settings
+                        )
+                        currentPosition = shortPosition
+                        trades.addAll(shortTrades)
+                    }
 
-                    trades.add(firstStage)
                     Log.d(TAG, "🎯 진입: $signal @ $currentPrice, CCI: $currentCCI")
                 }
             } else {
-                // 포지션 관리 (null 체크 추가)
+                // 포지션 관리
                 currentPosition?.let { position ->
-                    val actions = managePosition(position, currentPrice, currentCCI, settings, currentTimestamp)
+                    val (actions, isPositionClosed) = if (position.type == "LONG") {
+                        manageLongPositionComplete(position, currentPrice, currentCCI, settings, currentTimestamp)
+                    } else {
+                        manageShortPositionComplete(position, currentPrice, currentCCI, settings, currentTimestamp)
+                    }
 
-                    actions.forEach { action ->
-                        trades.add(action)
+                    trades.addAll(actions)
 
-                        // 포지션 종료 체크
-                        if (action.type in listOf("PROFIT_EXIT", "STOP_LOSS", "COMPLETE_EXIT")) {
-                            val positionResult = createPositionResult(position, trades, positionId)
-                            positions.add(positionResult)
-
-                            // 시드머니 업데이트
-                            val positionProfit = positionResult.totalProfit
-                            currentSeedMoney += positionProfit
-
-                            Log.d(TAG, "🏁 포지션 종료: ${position.type}, 수익: $positionProfit")
-                            currentPosition = null
+                    // 포지션 종료 체크
+                    if (isPositionClosed) {
+                        val positionResult = if (position.type == "LONG") {
+                            createLongPositionResult(position, trades, positionId)
+                        } else {
+                            createShortPositionResult(position, trades, positionId)
                         }
+                        positions.add(positionResult)
+
+                        // 시드머니 업데이트
+                        val positionProfit = positionResult.totalProfit
+                        currentSeedMoney += positionProfit
+
+                        Log.d(TAG, "🏁 포지션 종료: ${position.type}, 수익: $positionProfit")
+                        currentPosition = null
                     }
                 }
             }
@@ -189,8 +191,38 @@ class RealCciStrategyEngine {
         }
     }
 
-    // 단계별 진입 실행
-    private fun executeStageEntry(
+    // ========================================
+    // 롱 포지션 전용 메소드들
+    // ========================================
+
+    // 롱 포지션 생성 및 첫 진입
+    private fun createAndExecuteLongPosition(
+        positionId: Int,
+        entryPrice: Double,
+        timestamp: Long,
+        entryCCI: Double,
+        previousCCI: Double,
+        settings: CciStrategySettings
+    ): Pair<CciPosition, List<CciTradeExecution>> {
+
+        val position = CciPosition(
+            type = "LONG",
+            stages = mutableListOf(),
+            currentStage = 0,
+            timestamp = timestamp,
+            entryCCI = entryCCI,
+            previousCCI = previousCCI
+        )
+
+        val entryTrade = executeLongEntry(position, entryPrice, 0, settings.startAmount, timestamp, entryCCI, settings)
+
+        Log.d(TAG, "📈 롱 포지션 생성 #$positionId: 가격=$entryPrice, 금액=${settings.startAmount}")
+
+        return Pair(position, listOf(entryTrade))
+    }
+
+    // 롱 진입 실행
+    private fun executeLongEntry(
         position: CciPosition,
         price: Double,
         stage: Int,
@@ -219,17 +251,10 @@ class RealCciStrategyEngine {
         position.totalCoins += coins
         position.averagePrice = position.totalAmount / position.totalCoins
 
-        // 거래 타입 설정 (숏과 롱 구분)
-        val tradeType = if (position.type == "LONG") {
-            "STAGE${stage}_BUY"
-        } else {
-            "STAGE${stage}_SHORT_SELL" // 숏은 매도로 시작
-        }
-
-        Log.d(TAG, "${position.type} 진입 - 단계: $stage, 가격: $price, 금액: $amount, 평균단가: ${position.averagePrice}")
+        Log.d(TAG, "롱 매수 - 단계: $stage, 가격: $price, 금액: $amount, 평균단가: ${position.averagePrice}")
 
         return CciTradeExecution(
-            type = tradeType,
+            type = "LONG_BUY_STAGE$stage",
             stage = stage,
             entryPrice = price,
             amount = amount,
@@ -237,137 +262,83 @@ class RealCciStrategyEngine {
             fees = fee,
             timestamp = timestamp,
             entryCCI = cci,
-            reason = getStageEntryReason(stage, position.type)
+            reason = getLongEntryReason(stage)
         )
     }
 
-    // 포지션 관리 (실제 전략 로직)
-    private fun managePosition(
+    // 롱 포지션 관리 (완전 분리)
+    private fun manageLongPositionComplete(
         position: CciPosition,
         currentPrice: Double,
         currentCCI: Double,
         settings: CciStrategySettings,
         timestamp: Long
-    ): List<CciTradeExecution> {
-
-        val actions = mutableListOf<CciTradeExecution>()
-
-        when (position.type) {
-            "LONG" -> {
-                // 롱 포지션 관리
-                actions.addAll(manageLongPosition(position, currentPrice, currentCCI, settings, timestamp))
-            }
-            "SHORT" -> {
-                // 숏 포지션 관리 (물타기 없음, 손익절만)
-                actions.addAll(manageShortPosition(position, currentPrice, currentCCI, settings, timestamp))
-            }
-        }
-
-        return actions
-    }
-
-    // 롱 포지션 관리 (물타기 포함)
-    private fun manageLongPosition(
-        position: CciPosition,
-        currentPrice: Double,
-        currentCCI: Double,
-        settings: CciStrategySettings,
-        timestamp: Long
-    ): List<CciTradeExecution> {
+    ): Pair<List<CciTradeExecution>, Boolean> {
 
         val actions = mutableListOf<CciTradeExecution>()
         val averagePrice = position.averagePrice
-        val currentLossRate = (currentPrice - averagePrice) / averagePrice * 100
-
-        // 1. 익절 조건 체크 (1단계: 설정된 익절률, 다른 단계: 0.5%)
         val profitRate = (currentPrice - averagePrice) / averagePrice * 100
+        val lossRate = (averagePrice - currentPrice) / averagePrice * 100
+
+        // 1. 익절 조건 체크
         val targetProfit = if (position.currentStage == 0) settings.profitTarget else settings.halfSellProfit
 
         if (profitRate >= targetProfit) {
             if (position.currentStage == 0) {
                 // 1단계에서 익절 시 전액 매도
-                val exitAction = createExitAction(position, currentPrice, timestamp, currentCCI, "PROFIT_EXIT", settings)
+                val exitAction = createLongExitAction(position, currentPrice, timestamp, currentCCI, "LONG_PROFIT_EXIT", settings)
                 actions.add(exitAction)
+                Log.d(TAG, "롱 익절 완료: 수익률 $profitRate%")
+                return Pair(actions, true)
             } else {
                 // 다른 단계에서는 절반 매도
-                val halfSellAction = createHalfSellAction(position, currentPrice, timestamp, currentCCI, settings)
+                val halfSellAction = createLongHalfSellAction(position, currentPrice, timestamp, currentCCI, settings)
                 actions.add(halfSellAction)
+                Log.d(TAG, "롱 절반매도: 수익률 $profitRate%")
             }
-            return actions
         }
 
         // 2. 물타기 조건 체크
         when (position.currentStage) {
             0 -> {
-                if (currentLossRate <= -settings.stage1Loss) {
-                    // 현재 물량만큼 추가 매수
+                if (lossRate >= settings.stage1Loss) {
                     val additionalAmount = position.totalAmount
-                    val stageEntry = executeStageEntry(position, currentPrice, 1, additionalAmount, timestamp, currentCCI, settings)
+                    val stageEntry = executeLongEntry(position, currentPrice, 1, additionalAmount, timestamp, currentCCI, settings)
                     actions.add(stageEntry)
+                    Log.d(TAG, "롱 1단계 물타기: 손실률 $lossRate%")
                 }
             }
             1 -> {
-                if (currentLossRate <= -settings.stage2Loss) {
+                if (lossRate >= settings.stage2Loss) {
                     val additionalAmount = position.totalAmount
-                    val stageEntry = executeStageEntry(position, currentPrice, 2, additionalAmount, timestamp, currentCCI, settings)
+                    val stageEntry = executeLongEntry(position, currentPrice, 2, additionalAmount, timestamp, currentCCI, settings)
                     actions.add(stageEntry)
+                    Log.d(TAG, "롱 2단계 물타기: 손실률 $lossRate%")
                 }
             }
             2 -> {
-                if (currentLossRate <= -settings.stage3Loss) {
+                if (lossRate >= settings.stage3Loss) {
                     val additionalAmount = position.totalAmount
-                    val stageEntry = executeStageEntry(position, currentPrice, 3, additionalAmount, timestamp, currentCCI, settings)
+                    val stageEntry = executeLongEntry(position, currentPrice, 3, additionalAmount, timestamp, currentCCI, settings)
                     actions.add(stageEntry)
+                    Log.d(TAG, "롱 3단계 물타기: 손실률 $lossRate%")
                 }
             }
             3 -> {
-                if (currentLossRate <= -settings.stage4Loss) {
-                    // 4단계에서 -10% 손실 시 손절
-                    val stopLossAction = createExitAction(position, currentPrice, timestamp, currentCCI, "STOP_LOSS", settings)
+                if (lossRate >= settings.stage4Loss) {
+                    val stopLossAction = createLongExitAction(position, currentPrice, timestamp, currentCCI, "LONG_STOP_LOSS", settings)
                     actions.add(stopLossAction)
+                    Log.d(TAG, "롱 손절 완료: 손실률 $lossRate%")
+                    return Pair(actions, true)
                 }
             }
         }
 
-        return actions
+        return Pair(actions, false)
     }
 
-    // 숏 포지션 관리 (물타기 없음)
-    private fun manageShortPosition(
-        position: CciPosition,
-        currentPrice: Double,
-        currentCCI: Double,
-        settings: CciStrategySettings,
-        timestamp: Long
-    ): List<CciTradeExecution> {
-
-        val actions = mutableListOf<CciTradeExecution>()
-        val averagePrice = position.averagePrice
-
-        // 숏의 수익률 계산 수정: (진입가 - 현재가) / 진입가 * 100
-        val profitRate = (averagePrice - currentPrice) / averagePrice * 100
-        val lossRate = (currentPrice - averagePrice) / averagePrice * 100
-
-        Log.d(TAG, "숏 포지션 관리 - 진입가: $averagePrice, 현재가: $currentPrice, 수익률: $profitRate%, 손실률: $lossRate%")
-
-        // 숏은 단순 손익절만
-        if (profitRate >= settings.profitTarget) {
-            // 익절: 가격이 하락하여 수익
-            val exitAction = createExitAction(position, currentPrice, timestamp, currentCCI, "PROFIT_EXIT", settings)
-            actions.add(exitAction)
-            Log.d(TAG, "숏 익절 실행: 수익률 $profitRate%")
-        } else if (lossRate >= settings.stopLossPercent) {
-            // 손절: 가격이 상승하여 손실
-            val stopLossAction = createExitAction(position, currentPrice, timestamp, currentCCI, "STOP_LOSS", settings)
-            actions.add(stopLossAction)
-            Log.d(TAG, "숏 손절 실행: 손실률 $lossRate%")
-        }
-
-        return actions
-    }
-
-    // 전액 청산 액션 생성
-    private fun createExitAction(
+    // 롱 전액 청산
+    private fun createLongExitAction(
         position: CciPosition,
         exitPrice: Double,
         timestamp: Long,
@@ -379,44 +350,27 @@ class RealCciStrategyEngine {
         val totalCoins = position.totalCoins
         val exitAmount = totalCoins * exitPrice
         val fee = exitAmount * settings.feeRate / 100
+        val profitRate = (exitPrice - position.averagePrice) / position.averagePrice * 100
 
-        // 수익률 계산 수정
-        val profitRate = if (position.type == "LONG") {
-            // 롱: (매도가 - 매수가) / 매수가 * 100
-            (exitPrice - position.averagePrice) / position.averagePrice * 100
-        } else {
-            // 숏: (매수가 - 매도가) / 매수가 * 100 (숏은 높은 가격에 매도 후 낮은 가격에 매수)
-            (position.averagePrice - exitPrice) / position.averagePrice * 100
-        }
-
-        // 실제 손익 계산 (수수료 포함)
-        val actualProfit = if (position.type == "LONG") {
-            // 롱: 매도금액 - 매수금액 - 수수료
-            exitAmount - position.totalAmount - fee
-        } else {
-            // 숏: 매수금액 - 매도금액 - 수수료 (숏은 반대)
-            position.totalAmount - exitAmount - fee
-        }
-
-        Log.d(TAG, "${position.type} 청산 - 진입가: ${position.averagePrice}, 청산가: $exitPrice, 수익률: $profitRate%, 실제손익: $actualProfit")
+        Log.d(TAG, "롱 청산 - 진입평균가: ${position.averagePrice}, 청산가: $exitPrice, 수익률: $profitRate%")
 
         return CciTradeExecution(
             type = exitType,
             stage = position.currentStage,
             entryPrice = position.averagePrice,
             exitPrice = exitPrice,
-            amount = if (position.type == "LONG") exitAmount else actualProfit + position.totalAmount, // 숏은 실제 수익 반영
+            amount = exitAmount,
             coins = totalCoins,
             fees = fee,
             timestamp = timestamp,
             exitCCI = exitCCI,
             profitRate = profitRate,
-            reason = getExitReason(exitType)
+            reason = getLongExitReason(exitType)
         )
     }
 
-    // 절반 매도 액션 생성
-    private fun createHalfSellAction(
+    // 롱 절반 매도
+    private fun createLongHalfSellAction(
         position: CciPosition,
         exitPrice: Double,
         timestamp: Long,
@@ -427,19 +381,15 @@ class RealCciStrategyEngine {
         val halfCoins = position.totalCoins / 2
         val exitAmount = halfCoins * exitPrice
         val fee = exitAmount * settings.feeRate / 100
-        val profitRate = if (position.type == "LONG") {
-            (exitPrice - position.averagePrice) / position.averagePrice * 100
-        } else {
-            (position.averagePrice - exitPrice) / position.averagePrice * 100
-        }
+        val profitRate = (exitPrice - position.averagePrice) / position.averagePrice * 100
 
         // 포지션 정보 업데이트
         position.totalCoins = halfCoins
         position.totalAmount = halfCoins * position.averagePrice
-        position.currentStage = maxOf(0, position.currentStage - 1) // 한 단계 하락
+        position.currentStage = maxOf(0, position.currentStage - 1)
 
         return CciTradeExecution(
-            type = "HALF_SELL",
+            type = "LONG_HALF_SELL",
             stage = position.currentStage,
             entryPrice = position.averagePrice,
             exitPrice = exitPrice,
@@ -453,62 +403,218 @@ class RealCciStrategyEngine {
         )
     }
 
-    // 포지션 결과 생성
-    private fun createPositionResult(
+    // ========================================
+    // 숏 포지션 전용 메소드들
+    // ========================================
+
+    // 숏 포지션 생성 및 첫 진입
+    private fun createAndExecuteShortPosition(
+        positionId: Int,
+        entryPrice: Double,
+        timestamp: Long,
+        entryCCI: Double,
+        previousCCI: Double,
+        settings: CciStrategySettings
+    ): Pair<CciPosition, List<CciTradeExecution>> {
+
+        val position = CciPosition(
+            type = "SHORT",
+            stages = mutableListOf(),
+            currentStage = 0,
+            timestamp = timestamp,
+            entryCCI = entryCCI,
+            previousCCI = previousCCI
+        )
+
+        val entryTrade = executeShortEntry(position, entryPrice, settings.startAmount, timestamp, entryCCI, settings)
+
+        Log.d(TAG, "📉 숏 포지션 생성 #$positionId: 가격=$entryPrice, 금액=${settings.startAmount}")
+
+        return Pair(position, listOf(entryTrade))
+    }
+
+    // 숏 진입 실행 (매도)
+    private fun executeShortEntry(
+        position: CciPosition,
+        price: Double,
+        amount: Double,
+        timestamp: Long,
+        cci: Double,
+        settings: CciStrategySettings
+    ): CciTradeExecution {
+
+        val coins = amount / price
+        val fee = amount * settings.feeRate / 100
+
+        // 숏은 단일 진입만
+        position.totalAmount = amount
+        position.totalCoins = coins
+        position.averagePrice = price
+
+        Log.d(TAG, "숏 매도 진입 - 가격: $price, 금액: $amount, 코인: $coins")
+
+        return CciTradeExecution(
+            type = "SHORT_SELL_ENTRY",
+            stage = 0,
+            entryPrice = price,
+            amount = amount,
+            coins = coins,
+            fees = fee,
+            timestamp = timestamp,
+            entryCCI = cci,
+            reason = "CCI 과매수 회복 신호 (숏 매도 진입)"
+        )
+    }
+
+    // 숏 포지션 관리 (완전 분리)
+    private fun manageShortPositionComplete(
+        position: CciPosition,
+        currentPrice: Double,
+        currentCCI: Double,
+        settings: CciStrategySettings,
+        timestamp: Long
+    ): Pair<List<CciTradeExecution>, Boolean> {
+
+        val actions = mutableListOf<CciTradeExecution>()
+        val entryPrice = position.averagePrice
+
+        // 숏 수익률: (진입가 - 현재가) / 진입가 * 100
+        val profitRate = (entryPrice - currentPrice) / entryPrice * 100
+        val lossRate = (currentPrice - entryPrice) / entryPrice * 100
+
+        Log.d(TAG, "숏 포지션 체크 - 진입가: $entryPrice, 현재가: $currentPrice, 수익률: $profitRate%, 손실률: $lossRate%")
+
+        // 익절 조건
+        if (profitRate >= settings.profitTarget) {
+            val exitAction = createShortExitAction(position, currentPrice, timestamp, currentCCI, "SHORT_PROFIT_EXIT", settings)
+            actions.add(exitAction)
+            Log.d(TAG, "숏 익절 완료: 수익률 $profitRate% (${entryPrice} → ${currentPrice})")
+            return Pair(actions, true)
+        }
+
+        // 손절 조건
+        if (lossRate >= settings.stopLossPercent) {
+            val stopLossAction = createShortExitAction(position, currentPrice, timestamp, currentCCI, "SHORT_STOP_LOSS", settings)
+            actions.add(stopLossAction)
+            Log.d(TAG, "숏 손절 완료: 손실률 $lossRate% (${entryPrice} → ${currentPrice})")
+            return Pair(actions, true)
+        }
+
+        return Pair(actions, false)
+    }
+
+    // 숏 청산 (매수)
+    private fun createShortExitAction(
+        position: CciPosition,
+        exitPrice: Double,
+        timestamp: Long,
+        exitCCI: Double,
+        exitType: String,
+        settings: CciStrategySettings
+    ): CciTradeExecution {
+
+        val totalCoins = position.totalCoins
+        val exitAmount = totalCoins * exitPrice
+        val fee = exitAmount * settings.feeRate / 100
+        val profitRate = (position.averagePrice - exitPrice) / position.averagePrice * 100
+
+        Log.d(TAG, "숏 청산 - 진입가: ${position.averagePrice}, 청산가: $exitPrice, 수익률: $profitRate%")
+
+        return CciTradeExecution(
+            type = exitType,
+            stage = 0,
+            entryPrice = position.averagePrice,
+            exitPrice = exitPrice,
+            amount = exitAmount,
+            coins = totalCoins,
+            fees = fee,
+            timestamp = timestamp,
+            exitCCI = exitCCI,
+            profitRate = profitRate,
+            reason = getShortExitReason(exitType)
+        )
+    }
+
+    // ========================================
+    // 결과 생성 메소드들 (분리)
+    // ========================================
+
+    // 롱 포지션 결과 생성
+    private fun createLongPositionResult(
         position: CciPosition,
         allTrades: List<CciTradeExecution>,
         positionId: Int
     ): CciPositionResult {
 
         val positionTrades = allTrades.filter { trade ->
-            trade.timestamp >= position.timestamp &&
-                    (trade.type.contains("STAGE") || trade.type in listOf("HALF_SELL", "PROFIT_EXIT", "STOP_LOSS"))
-        }
+            trade.timestamp >= position.timestamp && trade.type.contains("LONG")
+        }.sortedBy { it.timestamp }
 
-        val buyTrades = positionTrades.filter {
-            if (position.type == "LONG") {
-                it.type.contains("BUY")
-            } else {
-                // 숏의 경우: 최종 청산이 "매수"가 됨
-                it.type in listOf("PROFIT_EXIT", "STOP_LOSS", "COMPLETE_EXIT")
-            }
-        }
-        val sellTrades = positionTrades.filter {
-            if (position.type == "LONG") {
-                !it.type.contains("BUY")
-            } else {
-                // 숏의 경우: 진입이 "매도"가 됨
-                it.type.contains("SHORT_SELL") || it.type.contains("STAGE")
-            }
-        }
+        val buyTrades = positionTrades.filter { it.type.contains("BUY") }
+        val sellTrades = positionTrades.filter { it.type.contains("SELL") || it.type.contains("EXIT") }
 
-        // 손익 계산 수정
-        val totalProfit = if (position.type == "LONG") {
-            // 롱: 매도금액 - 매수금액
-            sellTrades.sumOf { it.amount } - buyTrades.sumOf { it.amount }
-        } else {
-            // 숏: 매수금액 - 매도금액 (숏은 높은 가격에서 매도 시작, 낮은 가격에서 매수 종료)
-            buyTrades.sumOf { it.amount } - sellTrades.sumOf { it.amount }
-        }
-
+        // 롱 손익: 매도금액 - 매수금액
+        val totalBuyAmount = buyTrades.sumOf { it.amount }
+        val totalSellAmount = sellTrades.sumOf { it.amount }
         val totalFees = positionTrades.sumOf { it.fees }
+        val totalProfit = totalSellAmount - totalBuyAmount - totalFees
 
-        val startTime = formatTimestamp(position.timestamp)
-        val endTime = formatTimestamp(sellTrades.lastOrNull()?.timestamp ?: position.timestamp)
-        val duration = calculateDuration(position.timestamp, sellTrades.lastOrNull()?.timestamp ?: position.timestamp)
+        val startTime = formatTimestamp(positionTrades.first().timestamp)
+        val endTime = formatTimestamp(positionTrades.last().timestamp)
+        val duration = calculateDuration(positionTrades.first().timestamp, positionTrades.last().timestamp)
 
-        val finalProfit = totalProfit - totalFees
-
-        Log.d(TAG, "포지션 결과 생성 - ${position.type} #$positionId: 총손익=$totalProfit, 수수료=$totalFees, 최종손익=$finalProfit")
+        Log.d(TAG, "롱 포지션 결과 #$positionId: 매수=$totalBuyAmount, 매도=$totalSellAmount, 수수료=$totalFees, 순손익=$totalProfit")
 
         return CciPositionResult(
             positionId = positionId,
-            type = position.type,
-            symbol = "BTCUSDT", // 실제로는 설정에서 가져와야 함
+            type = "LONG",
+            symbol = "BTCUSDT",
             maxStage = position.currentStage,
-            totalProfit = finalProfit,
+            totalProfit = totalProfit,
             totalFees = totalFees,
             finalResult = sellTrades.lastOrNull()?.type ?: "INCOMPLETE",
+            startTime = startTime,
+            endTime = endTime,
+            duration = duration,
+            buyTrades = buyTrades,
+            sellTrades = sellTrades
+        )
+    }
+
+    // 숏 포지션 결과 생성
+    private fun createShortPositionResult(
+        position: CciPosition,
+        allTrades: List<CciTradeExecution>,
+        positionId: Int
+    ): CciPositionResult {
+
+        val positionTrades = allTrades.filter { trade ->
+            trade.timestamp >= position.timestamp && trade.type.contains("SHORT")
+        }.sortedBy { it.timestamp }
+
+        val sellTrades = positionTrades.filter { it.type.contains("SELL") }  // 진입 (매도)
+        val buyTrades = positionTrades.filter { it.type.contains("EXIT") }   // 청산 (매수)
+
+        // 숏 손익: 매도금액(진입) - 매수금액(청산)
+        val totalSellAmount = sellTrades.sumOf { it.amount }
+        val totalBuyAmount = buyTrades.sumOf { it.amount }
+        val totalFees = positionTrades.sumOf { it.fees }
+        val totalProfit = totalSellAmount - totalBuyAmount - totalFees
+
+        val startTime = formatTimestamp(positionTrades.first().timestamp)
+        val endTime = formatTimestamp(positionTrades.last().timestamp)
+        val duration = calculateDuration(positionTrades.first().timestamp, positionTrades.last().timestamp)
+
+        Log.d(TAG, "숏 포지션 결과 #$positionId: 매도=$totalSellAmount, 매수=$totalBuyAmount, 수수료=$totalFees, 순손익=$totalProfit")
+
+        return CciPositionResult(
+            positionId = positionId,
+            type = "SHORT",
+            symbol = "BTCUSDT",
+            maxStage = 0,  // 숏은 물타기 없음
+            totalProfit = totalProfit,
+            totalFees = totalFees,
+            finalResult = buyTrades.lastOrNull()?.type ?: "INCOMPLETE",
             startTime = startTime,
             endTime = endTime,
             duration = duration,
@@ -576,21 +682,29 @@ class RealCciStrategyEngine {
     }
 
     // 유틸리티 함수들
-    private fun getStageEntryReason(stage: Int, type: String): String {
+    private fun getLongEntryReason(stage: Int): String {
         return when (stage) {
-            0 -> "CCI 진입 신호 (${if (type == "LONG") "과매도 회복" else "과매수 회복"})"
-            1 -> "평균단가 대비 2% 손실 - 현재물량만큼 추가매수"
-            2 -> "평균단가 대비 4% 손실 - 현재물량만큼 추가매수"
-            3 -> "평균단가 대비 8% 손실 - 현재물량만큼 추가매수"
-            else -> "물타기 매수"
+            0 -> "CCI 과매도 회복 신호 (롱 매수 진입)"
+            1 -> "평균단가 대비 2% 손실 - 1단계 물타기"
+            2 -> "평균단가 대비 4% 손실 - 2단계 물타기"
+            3 -> "평균단가 대비 8% 손실 - 3단계 물타기"
+            else -> "${stage}단계 물타기"
         }
     }
 
-    private fun getExitReason(exitType: String): String {
+    private fun getLongExitReason(exitType: String): String {
         return when (exitType) {
-            "PROFIT_EXIT" -> "익절 목표 달성"
-            "STOP_LOSS" -> "손절 조건 도달"
-            "HALF_SELL" -> "0.5% 수익시 절반 매도"
+            "LONG_PROFIT_EXIT" -> "롱 익절 목표 달성"
+            "LONG_STOP_LOSS" -> "롱 손절 조건 도달"
+            "LONG_HALF_SELL" -> "롱 0.5% 수익시 절반 매도"
+            else -> exitType
+        }
+    }
+
+    private fun getShortExitReason(exitType: String): String {
+        return when (exitType) {
+            "SHORT_PROFIT_EXIT" -> "숏 익절 목표 달성 (가격 하락)"
+            "SHORT_STOP_LOSS" -> "숏 손절 조건 도달 (가격 상승)"
             else -> exitType
         }
     }
