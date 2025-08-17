@@ -1,4 +1,4 @@
-// MarketSignalService.kt - 상태 기반 시세포착 서비스 (완전 재작성)
+// MarketSignalService.kt - DB 기반 상태 시세포착 서비스
 
 package com.example.ver20.dao
 
@@ -11,25 +11,20 @@ import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.*
 import kotlin.math.*
 import kotlinx.coroutines.*
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 
-// 시그널 상태 정의
-enum class CciSignalState {
-    NO_BREAKOUT,     // 미돌파 (기본 상태)
-    LONG_BREAKOUT,   // 롱 돌파 상태 (CCI가 -돌파값 아래로 내려감)
-    SHORT_BREAKOUT   // 숏 돌파 상태 (CCI가 +돌파값 위로 올라감)
+// 바이낸스 K-line API 인터페이스
+interface BinanceKlineApiForSinalService {
+    @GET("api/v3/klines")
+    fun getKlines(
+        @Query("symbol") symbol: String,
+        @Query("interval") interval: String,
+        @Query("limit") limit: Int = 500
+    ): Call<List<List<Any>>>
 }
 
-// 시그널 상태 저장용 데이터 클래스
-data class CciMonitoringState(
-    val configId: String,
-    val currentState: CciSignalState,
-    val lastCciValue: Double,
-    val lastCheckTime: Long,
-    val breakoutValue: Double,
-    val entryValue: Double
-)
-
-// MongoDB API 인터페이스 (시세포착용)
+// MongoDB API 인터페이스
 interface MarketSignalApi {
     // 시세포착 설정 저장
     @GET("api")
@@ -80,7 +75,7 @@ interface MarketSignalApi {
         @Query("limit") limit: Int = 50
     ): Call<MarketSignalApiResponse>
 
-    // 돌파 상태 저장
+    // DB 기반 돌파 상태 저장
     @GET("api")
     fun saveBreakoutState(
         @Query("action") action: String = "saveBreakoutState",
@@ -93,7 +88,7 @@ interface MarketSignalApi {
         @Query("entryValue") entryValue: Double
     ): Call<MarketSignalApiResponse>
 
-    // 돌파 상태 조회
+    // DB 기반 돌파 상태 조회
     @GET("api")
     fun getBreakoutState(
         @Query("action") action: String = "getBreakoutState",
@@ -113,7 +108,6 @@ interface MarketSignalApi {
         @Query("action") action: String = "deleteBreakoutState",
         @Query("configId") configId: String
     ): Call<MarketSignalApiResponse>
-
 }
 
 class MarketSignalService {
@@ -135,12 +129,9 @@ class MarketSignalService {
         .build()
 
     private val api = retrofit.create(MarketSignalApi::class.java)
-    private val binanceApi = binanceRetrofit.create(BinanceKlineApi::class.java)
+    private val binanceApi = binanceRetrofit.create(BinanceKlineApiForSinalService::class.java)
 
-    // 각 설정별 상태 저장 (configId를 키로 사용)
-    private val monitoringStates = mutableMapOf<String, CciMonitoringState>()
-
-    // ===== 시세포착 설정 관련 =====
+    // ===== 시세포착 설정 관리 =====
 
     /**
      * 시세포착 설정 저장
@@ -149,7 +140,7 @@ class MarketSignalService {
         config: MarketSignalConfig,
         callback: (Boolean, String?) -> Unit
     ) {
-        Log.d(TAG, "설정 저장 시작: ${config.username} - ${config.signalType} - ${config.symbol}")
+        Log.d(TAG, "시세포착 설정 저장: ${config.symbol}")
 
         api.saveSignalConfig(
             username = config.username,
@@ -163,14 +154,22 @@ class MarketSignalService {
             seedMoney = config.seedMoney,
             isActive = config.isActive
         ).enqueue(object : Callback<MarketSignalApiResponse> {
-            override fun onResponse(call: Call<MarketSignalApiResponse>, response: Response<MarketSignalApiResponse>) {
+            override fun onResponse(
+                call: Call<MarketSignalApiResponse>,
+                response: Response<MarketSignalApiResponse>
+            ) {
                 if (response.isSuccessful) {
                     val result = response.body()
-                    Log.d(TAG, "설정 저장 응답: success=${result?.success}, message=${result?.message}")
-                    callback(result?.success == true, result?.message)
+                    if (result?.success == true) {
+                        Log.d(TAG, "설정 저장 성공")
+                        callback(true, null)
+                    } else {
+                        Log.e(TAG, "설정 저장 실패: ${result?.message}")
+                        callback(false, result?.message)
+                    }
                 } else {
-                    Log.e(TAG, "설정 저장 실패: HTTP ${response.code()}")
-                    callback(false, "서버 응답 오류: ${response.code()}")
+                    Log.e(TAG, "설정 저장 HTTP 오류: ${response.code()}")
+                    callback(false, "서버 오류: ${response.code()}")
                 }
             }
 
@@ -188,81 +187,465 @@ class MarketSignalService {
         username: String,
         callback: (List<MarketSignalConfig>?, String?) -> Unit
     ) {
-        Log.d(TAG, "설정 조회 시작: $username")
+        Log.d(TAG, "시세포착 설정 조회: $username")
 
-        api.getSignalConfigs(username = username).enqueue(object : Callback<MarketSignalApiResponse> {
-            override fun onResponse(call: Call<MarketSignalApiResponse>, response: Response<MarketSignalApiResponse>) {
-                if (response.isSuccessful) {
-                    val result = response.body()
-                    Log.d(TAG, "설정 조회 응답: success=${result?.success}")
-
-                    if (result?.success == true) {
-                        try {
-                            val dataList = result.data as? List<*>
-
-                            if (dataList != null) {
-                                val configs = dataList.mapNotNull { item ->
-                                    val dataMap = item as? Map<*, *>
-                                    if (dataMap != null) {
-                                        try {
-                                            MarketSignalConfig(
-                                                id = dataMap["_id"]?.toString() ?: "",
-                                                username = dataMap["username"]?.toString() ?: "",
-                                                signalType = dataMap["signalType"]?.toString() ?: "",
-                                                symbol = dataMap["symbol"]?.toString() ?: "",
-                                                timeframe = dataMap["timeframe"]?.toString() ?: "",
-                                                checkInterval = (dataMap["checkInterval"] as? Number)?.toInt() ?: 900,
-                                                isActive = dataMap["isActive"] as? Boolean ?: true,
-                                                createdAt = dataMap["createdAt"]?.toString() ?: "",
-                                                cciPeriod = (dataMap["cciPeriod"] as? Number)?.toInt() ?: 20,
-                                                cciBreakoutValue = (dataMap["cciBreakoutValue"] as? Number)?.toDouble() ?: 100.0,
-                                                cciEntryValue = (dataMap["cciEntryValue"] as? Number)?.toDouble() ?: 90.0,
-                                                seedMoney = (dataMap["seedMoney"] as? Number)?.toDouble() ?: 1000.0
-                                            )
-                                        } catch (e: Exception) {
-                                            Log.e(TAG, "설정 데이터 파싱 오류: ${e.message}")
-                                            null
-                                        }
-                                    } else null
+        api.getSignalConfigs(username = username)
+            .enqueue(object : Callback<MarketSignalApiResponse> {
+                override fun onResponse(
+                    call: Call<MarketSignalApiResponse>,
+                    response: Response<MarketSignalApiResponse>
+                ) {
+                    if (response.isSuccessful) {
+                        val result = response.body()
+                        if (result?.success == true) {
+                            try {
+                                val configsData = result.data
+                                val configs = if (configsData is List<*>) {
+                                    configsData.mapNotNull { item ->
+                                        if (item is Map<*, *>) {
+                                            val dataMap = item as Map<String, Any>
+                                            try {
+                                                MarketSignalConfig(
+                                                    id = dataMap["_id"]?.toString() ?: "",
+                                                    username = dataMap["username"]?.toString() ?: "",
+                                                    signalType = dataMap["signalType"]?.toString() ?: "CCI",
+                                                    symbol = dataMap["symbol"]?.toString() ?: "",
+                                                    timeframe = dataMap["timeframe"]?.toString() ?: "15m",
+                                                    checkInterval = (dataMap["checkInterval"] as? Number)?.toInt() ?: 300,
+                                                    isActive = dataMap["isActive"] as? Boolean ?: true,
+                                                    createdAt = dataMap["createdAt"]?.toString() ?: "",
+                                                    cciPeriod = (dataMap["cciPeriod"] as? Number)?.toInt() ?: 20,
+                                                    cciBreakoutValue = (dataMap["cciBreakoutValue"] as? Number)?.toDouble() ?: 100.0,
+                                                    cciEntryValue = (dataMap["cciEntryValue"] as? Number)?.toDouble() ?: 90.0,
+                                                    seedMoney = (dataMap["seedMoney"] as? Number)?.toDouble() ?: 1000.0
+                                                )
+                                            } catch (e: Exception) {
+                                                Log.e(TAG, "설정 파싱 오류: ${e.message}")
+                                                null
+                                            }
+                                        } else null
+                                    }
+                                } else {
+                                    emptyList()
                                 }
 
                                 Log.d(TAG, "설정 조회 성공: ${configs.size}개")
                                 callback(configs, null)
-                            } else {
-                                Log.d(TAG, "설정 데이터가 없음")
-                                callback(emptyList(), null)
+                            } catch (e: Exception) {
+                                Log.e(TAG, "응답 파싱 오류: ${e.message}")
+                                callback(null, "응답 파싱 오류: ${e.message}")
                             }
-                        } catch (e: Exception) {
-                            Log.e(TAG, "응답 파싱 오류: ${e.message}")
-                            callback(null, "응답 파싱 오류: ${e.message}")
+                        } else {
+                            callback(null, result?.message)
                         }
                     } else {
-                        callback(null, result?.message)
+                        callback(null, "서버 오류: ${response.code()}")
                     }
-                } else {
-                    Log.e(TAG, "설정 조회 실패: HTTP ${response.code()}")
-                    callback(null, "서버 응답 오류: ${response.code()}")
                 }
-            }
 
-            override fun onFailure(call: Call<MarketSignalApiResponse>, t: Throwable) {
-                Log.e(TAG, "설정 조회 네트워크 오류: ${t.message}")
-                callback(null, "네트워크 오류: ${t.message}")
-            }
-        })
+                override fun onFailure(call: Call<MarketSignalApiResponse>, t: Throwable) {
+                    Log.e(TAG, "설정 조회 네트워크 오류: ${t.message}")
+                    callback(null, "네트워크 오류: ${t.message}")
+                }
+            })
     }
 
-    // ===== 시세포착 신호 관련 =====
+    // ===== DB 기반 돌파 상태 관리 =====
 
     /**
-     * 시세포착 신호 저장
+     * 돌파 상태를 DB에서 조회
      */
-    fun saveSignal(
-        signal: MarketSignal,
-        callback: (Boolean, String?) -> Unit
-    ) {
-        Log.d(TAG, "신호 저장 시작: ${signal.username} - ${signal.symbol} - ${signal.direction}")
+    private suspend fun getBreakoutStateFromDB(configId: String): BreakoutStateData? {
+        return suspendCancellableCoroutine { continuation ->
+            api.getBreakoutState(configId = configId)
+                .enqueue(object : Callback<MarketSignalApiResponse> {
+                    override fun onResponse(
+                        call: Call<MarketSignalApiResponse>,
+                        response: Response<MarketSignalApiResponse>
+                    ) {
+                        if (response.isSuccessful) {
+                            val result = response.body()
+                            if (result?.success == true) {
+                                val stateData = result.data
+                                if (stateData is Map<*, *>) {
+                                    val dataMap = stateData as Map<String, Any>
+                                    val breakoutState = BreakoutStateData(
+                                        configId = dataMap["configId"]?.toString() ?: configId,
+                                        currentState = CciSignalState.valueOf(
+                                            dataMap["currentState"]?.toString() ?: "NO_BREAKOUT"
+                                        ),
+                                        lastCciValue = (dataMap["lastCciValue"] as? Number)?.toDouble() ?: 0.0,
+                                        breakoutValue = (dataMap["breakoutValue"] as? Number)?.toDouble() ?: 100.0,
+                                        entryValue = (dataMap["entryValue"] as? Number)?.toDouble() ?: 90.0,
+                                        lastCheckTime = System.currentTimeMillis()
+                                    )
+                                    Log.d(TAG, "DB에서 상태 조회 성공: $configId - ${breakoutState.currentState}")
+                                    continuation.resume(breakoutState, null)
+                                } else {
+                                    Log.d(TAG, "DB에 상태가 없음: $configId")
+                                    continuation.resume(null, null)
+                                }
+                            } else {
+                                Log.d(TAG, "DB 상태 조회 결과 없음: $configId")
+                                continuation.resume(null, null)
+                            }
+                        } else {
+                            Log.e(TAG, "DB 상태 조회 HTTP 오류: ${response.code()}")
+                            continuation.resume(null, null)
+                        }
+                    }
 
+                    override fun onFailure(call: Call<MarketSignalApiResponse>, t: Throwable) {
+                        Log.e(TAG, "DB 상태 조회 네트워크 오류: ${t.message}")
+                        continuation.resume(null, null)
+                    }
+                })
+        }
+    }
+
+    /**
+     * 돌파 상태를 DB에 저장
+     */
+    private suspend fun saveBreakoutStateToDB(state: BreakoutStateData, config: MarketSignalConfig): Boolean {
+        return suspendCancellableCoroutine { continuation ->
+            api.saveBreakoutState(
+                configId = state.configId,
+                username = config.username,
+                symbol = config.symbol,
+                currentState = state.currentState.name,
+                lastCciValue = state.lastCciValue,
+                breakoutValue = state.breakoutValue,
+                entryValue = state.entryValue
+            ).enqueue(object : Callback<MarketSignalApiResponse> {
+                override fun onResponse(
+                    call: Call<MarketSignalApiResponse>,
+                    response: Response<MarketSignalApiResponse>
+                ) {
+                    if (response.isSuccessful) {
+                        val result = response.body()
+                        if (result?.success == true) {
+                            Log.d(TAG, "DB 상태 저장 성공: ${state.configId} - ${state.currentState}")
+                            continuation.resume(true, null)
+                        } else {
+                            Log.e(TAG, "DB 상태 저장 실패: ${result?.message}")
+                            continuation.resume(false, null)
+                        }
+                    } else {
+                        Log.e(TAG, "DB 상태 저장 HTTP 오류: ${response.code()}")
+                        continuation.resume(false, null)
+                    }
+                }
+
+                override fun onFailure(call: Call<MarketSignalApiResponse>, t: Throwable) {
+                    Log.e(TAG, "DB 상태 저장 네트워크 오류: ${t.message}")
+                    continuation.resume(false, null)
+                }
+            })
+        }
+    }
+
+    // ===== 상태 기반 실시간 모니터링 =====
+
+    /**
+     * DB 기반 상태 시세포착 모니터링
+     */
+    suspend fun startSignalMonitoring(
+        config: MarketSignalConfig,
+        onSignalDetected: (MarketSignal) -> Unit
+    ) {
+        Log.d(TAG, "🎯 DB 기반 상태 시세포착 시작: ${config.symbol} (${config.timeframe})")
+        Log.d(TAG, "설정: 돌파값=${config.cciBreakoutValue}, 진입값=${config.cciEntryValue}")
+
+        while (config.isActive) {
+            try {
+                // 1. 현재 CCI 계산
+                val currentCci = getCurrentCci(config)
+                if (currentCci == null) {
+                    delay(config.checkInterval * 1000L)
+                    continue
+                }
+
+                // 2. DB에서 현재 상태 조회
+                var currentState = getBreakoutStateFromDB(config.id) ?: BreakoutStateData(
+                    configId = config.id,
+                    currentState = CciSignalState.NO_BREAKOUT,
+                    lastCciValue = currentCci,
+                    breakoutValue = config.cciBreakoutValue,
+                    entryValue = config.cciEntryValue,
+                    lastCheckTime = System.currentTimeMillis()
+                )
+
+                Log.d(TAG, "📊 ${config.symbol} CCI: $currentCci (상태: ${currentState.currentState})")
+
+                // 3. 상태별 로직 처리
+                val newState = when (currentState.currentState) {
+                    CciSignalState.NO_BREAKOUT -> {
+                        // 미돌파에서 돌파 체크
+                        if (currentCci <= -config.cciBreakoutValue) {
+                            // 롱 돌파 감지
+                            Log.d(TAG, "🔥 롱 돌파 감지: ${config.symbol} (CCI: $currentCci)")
+                            currentState.copy(
+                                currentState = CciSignalState.LONG_BREAKOUT,
+                                lastCciValue = currentCci,
+                                lastCheckTime = System.currentTimeMillis()
+                            )
+                        } else if (currentCci >= config.cciBreakoutValue) {
+                            // 숏 돌파 감지
+                            Log.d(TAG, "🔥 숏 돌파 감지: ${config.symbol} (CCI: $currentCci)")
+                            currentState.copy(
+                                currentState = CciSignalState.SHORT_BREAKOUT,
+                                lastCciValue = currentCci,
+                                lastCheckTime = System.currentTimeMillis()
+                            )
+                        } else {
+                            // 돌파 없음
+                            currentState.copy(
+                                lastCciValue = currentCci,
+                                lastCheckTime = System.currentTimeMillis()
+                            )
+                        }
+                    }
+
+                    CciSignalState.LONG_BREAKOUT -> {
+                        // 롱 돌파 상태에서 진입 체크
+                        if (currentCci >= -config.cciEntryValue) {
+                            // 진입 조건 만족 → 시그널 생성 및 리셋
+                            val latestPrice = getLatestPrice(config.symbol)
+                            if (latestPrice != null) {
+                                val signal = MarketSignal(
+                                    configId = config.id,
+                                    username = config.username,
+                                    symbol = config.symbol,
+                                    signalType = config.signalType,
+                                    direction = "LONG",
+                                    price = latestPrice.close,
+                                    volume = latestPrice.volume,
+                                    cciValue = currentCci,
+                                    cciBreakoutValue = config.cciBreakoutValue,
+                                    cciEntryValue = config.cciEntryValue,
+                                    reason = "CCI 롱 돌파 후 진입",
+                                    timeframe = config.timeframe
+                                )
+
+                                // 시그널 저장 및 콜백
+                                saveSignal(signal) { success, _ ->
+                                    if (success) {
+                                        onSignalDetected(signal)
+                                        Log.d(TAG, "✅ 롱 진입 완료: ${config.symbol}")
+                                    }
+                                }
+                            }
+
+                            // 상태 리셋
+                            currentState.copy(
+                                currentState = CciSignalState.NO_BREAKOUT,
+                                lastCciValue = currentCci,
+                                lastCheckTime = System.currentTimeMillis()
+                            )
+                        } else {
+                            // 진입 조건 미만족 → 상태 유지
+                            currentState.copy(
+                                lastCciValue = currentCci,
+                                lastCheckTime = System.currentTimeMillis()
+                            )
+                        }
+                    }
+
+                    CciSignalState.SHORT_BREAKOUT -> {
+                        // 숏 돌파 상태에서 진입 체크
+                        if (currentCci <= config.cciEntryValue) {
+                            // 진입 조건 만족 → 시그널 생성 및 리셋
+                            val latestPrice = getLatestPrice(config.symbol)
+                            if (latestPrice != null) {
+                                val signal = MarketSignal(
+                                    configId = config.id,
+                                    username = config.username,
+                                    symbol = config.symbol,
+                                    signalType = config.signalType,
+                                    direction = "SHORT",
+                                    price = latestPrice.close,
+                                    volume = latestPrice.volume,
+                                    cciValue = currentCci,
+                                    cciBreakoutValue = config.cciBreakoutValue,
+                                    cciEntryValue = config.cciEntryValue,
+                                    reason = "CCI 숏 돌파 후 진입",
+                                    timeframe = config.timeframe
+                                )
+
+                                // 시그널 저장 및 콜백
+                                saveSignal(signal) { success, _ ->
+                                    if (success) {
+                                        onSignalDetected(signal)
+                                        Log.d(TAG, "✅ 숏 진입 완료: ${config.symbol}")
+                                    }
+                                }
+                            }
+
+                            // 상태 리셋
+                            currentState.copy(
+                                currentState = CciSignalState.NO_BREAKOUT,
+                                lastCciValue = currentCci,
+                                lastCheckTime = System.currentTimeMillis()
+                            )
+                        } else {
+                            // 진입 조건 미만족 → 상태 유지
+                            currentState.copy(
+                                lastCciValue = currentCci,
+                                lastCheckTime = System.currentTimeMillis()
+                            )
+                        }
+                    }
+                }
+
+                // 4. 상태 변화가 있으면 DB에 저장
+                if (newState.currentState != currentState.currentState ||
+                    abs(newState.lastCciValue - currentState.lastCciValue) > 0.01) {
+                    saveBreakoutStateToDB(newState, config)
+                }
+
+                delay(config.checkInterval * 1000L)
+
+            } catch (e: Exception) {
+                Log.e(TAG, "모니터링 오류: ${e.message}")
+                delay(30000) // 30초 후 재시도
+            }
+        }
+    }
+
+    // ===== CCI 계산 및 바이낸스 API =====
+
+    /**
+     * 현재 CCI 값 계산
+     */
+    private suspend fun getCurrentCci(config: MarketSignalConfig): Double? {
+        return suspendCancellableCoroutine { continuation ->
+            val interval = when (config.timeframe) {
+                "15m" -> "15m"
+                "1h" -> "1h"
+                "4h" -> "4h"
+                "1d" -> "1d"
+                else -> "15m"
+            }
+
+            binanceApi.getKlines(
+                symbol = config.symbol,
+                interval = interval,
+                limit = config.cciPeriod + 50
+            ).enqueue(object : Callback<List<List<Any>>> {
+                override fun onResponse(
+                    call: Call<List<List<Any>>>,
+                    response: Response<List<List<Any>>>
+                ) {
+                    if (response.isSuccessful) {
+                        val klines = response.body()
+                        if (klines != null && klines.size >= config.cciPeriod) {
+                            try {
+                                val klineData = klines.map { kline ->
+                                    KlineData(
+                                        timestamp = (kline[0] as Number).toLong(),
+                                        open = (kline[1] as String).toDouble(),
+                                        high = (kline[2] as String).toDouble(),
+                                        low = (kline[3] as String).toDouble(),
+                                        close = (kline[4] as String).toDouble(),
+                                        volume = (kline[5] as String).toDouble()
+                                    )
+                                }
+
+                                val cci = calculateCCI(klineData.takeLast(config.cciPeriod), config.cciPeriod)
+                                continuation.resume(cci, null)
+                            } catch (e: Exception) {
+                                Log.e(TAG, "CCI 계산 오류: ${e.message}")
+                                continuation.resume(null, null)
+                            }
+                        } else {
+                            Log.e(TAG, "K-line 데이터 부족")
+                            continuation.resume(null, null)
+                        }
+                    } else {
+                        Log.e(TAG, "K-line API 오류: ${response.code()}")
+                        continuation.resume(null, null)
+                    }
+                }
+
+                override fun onFailure(call: Call<List<List<Any>>>, t: Throwable) {
+                    Log.e(TAG, "K-line API 네트워크 오류: ${t.message}")
+                    continuation.resume(null, null)
+                }
+            })
+        }
+    }
+
+    /**
+     * 최신 가격 정보 조회
+     */
+    private suspend fun getLatestPrice(symbol: String): KlineData? {
+        return suspendCancellableCoroutine { continuation ->
+            binanceApi.getKlines(symbol = symbol, interval = "1m", limit = 1)
+                .enqueue(object : Callback<List<List<Any>>> {
+                    override fun onResponse(
+                        call: Call<List<List<Any>>>,
+                        response: Response<List<List<Any>>>
+                    ) {
+                        if (response.isSuccessful) {
+                            val klines = response.body()
+                            if (klines != null && klines.isNotEmpty()) {
+                                try {
+                                    val kline = klines[0]
+                                    val klineData = KlineData(
+                                        timestamp = (kline[0] as Number).toLong(),
+                                        open = (kline[1] as String).toDouble(),
+                                        high = (kline[2] as String).toDouble(),
+                                        low = (kline[3] as String).toDouble(),
+                                        close = (kline[4] as String).toDouble(),
+                                        volume = (kline[5] as String).toDouble()
+                                    )
+                                    continuation.resume(klineData, null)
+                                } catch (e: Exception) {
+                                    continuation.resume(null, null)
+                                }
+                            } else {
+                                continuation.resume(null, null)
+                            }
+                        } else {
+                            continuation.resume(null, null)
+                        }
+                    }
+
+                    override fun onFailure(call: Call<List<List<Any>>>, t: Throwable) {
+                        continuation.resume(null, null)
+                    }
+                })
+        }
+    }
+
+    /**
+     * CCI 계산
+     */
+    private fun calculateCCI(klineData: List<KlineData>, period: Int): Double {
+        if (klineData.size < period) return 0.0
+
+        val recentData = klineData.takeLast(period)
+        val typicalPrices = recentData.map { it.typical }
+
+        // Simple Moving Average of Typical Price
+        val sma = typicalPrices.average()
+
+        // Mean Deviation
+        val meanDeviation = typicalPrices.map { abs(it - sma) }.average()
+
+        if (meanDeviation == 0.0) return 0.0
+
+        // CCI = (Typical Price - SMA) / (0.015 * Mean Deviation)
+        val latestTypical = typicalPrices.last()
+        return (latestTypical - sma) / (0.015 * meanDeviation)
+    }
+
+    // ===== 시그널 저장 =====
+
+    /**
+     * 시그널 저장
+     */
+    fun saveSignal(signal: MarketSignal, callback: (Boolean, String?) -> Unit) {
         api.saveSignal(
             configId = signal.configId,
             username = signal.username,
@@ -277,421 +660,186 @@ class MarketSignalService {
             reason = signal.reason,
             timeframe = signal.timeframe
         ).enqueue(object : Callback<MarketSignalApiResponse> {
-            override fun onResponse(call: Call<MarketSignalApiResponse>, response: Response<MarketSignalApiResponse>) {
+            override fun onResponse(
+                call: Call<MarketSignalApiResponse>,
+                response: Response<MarketSignalApiResponse>
+            ) {
                 if (response.isSuccessful) {
                     val result = response.body()
-                    Log.d(TAG, "신호 저장 응답: success=${result?.success}")
                     callback(result?.success == true, result?.message)
                 } else {
-                    Log.e(TAG, "신호 저장 실패: HTTP ${response.code()}")
-                    callback(false, "서버 응답 오류: ${response.code()}")
+                    callback(false, "HTTP ${response.code()}")
                 }
             }
 
             override fun onFailure(call: Call<MarketSignalApiResponse>, t: Throwable) {
-                Log.e(TAG, "신호 저장 네트워크 오류: ${t.message}")
-                callback(false, "네트워크 오류: ${t.message}")
+                callback(false, t.message)
             }
         })
     }
 
     /**
-     * 시세포착 신호 조회
+     * 시그널 조회
      */
     fun getSignals(
         username: String,
+        limit: Int = 50,
         callback: (List<MarketSignal>?, String?) -> Unit
     ) {
-        Log.d(TAG, "신호 조회 시작: $username")
+        Log.d(TAG, "시그널 조회: $username")
 
-        api.getSignals(username = username).enqueue(object : Callback<MarketSignalApiResponse> {
-            override fun onResponse(call: Call<MarketSignalApiResponse>, response: Response<MarketSignalApiResponse>) {
-                if (response.isSuccessful) {
-                    val result = response.body()
-                    Log.d(TAG, "신호 조회 응답: success=${result?.success}")
-
-                    if (result?.success == true) {
-                        try {
-                            val dataList = result.data as? List<*>
-
-                            if (dataList != null) {
-                                val signals = dataList.mapNotNull { item ->
-                                    val dataMap = item as? Map<*, *>
-                                    if (dataMap != null) {
-                                        try {
-                                            MarketSignal(
-                                                id = dataMap["_id"]?.toString() ?: "",
-                                                configId = dataMap["configId"]?.toString() ?: "",
-                                                username = dataMap["username"]?.toString() ?: "",
-                                                symbol = dataMap["symbol"]?.toString() ?: "",
-                                                signalType = dataMap["signalType"]?.toString() ?: "",
-                                                direction = dataMap["direction"]?.toString() ?: "",
-                                                timestamp = dataMap["timestamp"]?.toString() ?: "",
-                                                price = (dataMap["price"] as? Number)?.toDouble() ?: 0.0,
-                                                volume = (dataMap["volume"] as? Number)?.toDouble() ?: 0.0,
-                                                cciValue = (dataMap["cciValue"] as? Number)?.toDouble() ?: 0.0,
-                                                cciBreakoutValue = (dataMap["cciBreakoutValue"] as? Number)?.toDouble() ?: 0.0,
-                                                cciEntryValue = (dataMap["cciEntryValue"] as? Number)?.toDouble() ?: 0.0,
-                                                reason = dataMap["reason"]?.toString() ?: "",
-                                                timeframe = dataMap["timeframe"]?.toString() ?: "",
-                                                status = dataMap["status"]?.toString() ?: "ACTIVE",
-                                                isRead = dataMap["isRead"] as? Boolean ?: false
-                                            )
-                                        } catch (e: Exception) {
-                                            Log.e(TAG, "신호 데이터 파싱 오류: ${e.message}")
-                                            null
-                                        }
-                                    } else null
+        api.getSignals(username = username, limit = limit)
+            .enqueue(object : Callback<MarketSignalApiResponse> {
+                override fun onResponse(
+                    call: Call<MarketSignalApiResponse>,
+                    response: Response<MarketSignalApiResponse>
+                ) {
+                    if (response.isSuccessful) {
+                        val result = response.body()
+                        if (result?.success == true) {
+                            try {
+                                val signalsData = result.data
+                                val signals = if (signalsData is List<*>) {
+                                    signalsData.mapNotNull { item ->
+                                        if (item is Map<*, *>) {
+                                            val dataMap = item as Map<String, Any>
+                                            try {
+                                                MarketSignal(
+                                                    id = dataMap["_id"]?.toString() ?: "",
+                                                    configId = dataMap["configId"]?.toString() ?: "",
+                                                    username = dataMap["username"]?.toString() ?: "",
+                                                    symbol = dataMap["symbol"]?.toString() ?: "",
+                                                    signalType = dataMap["signalType"]?.toString() ?: "CCI",
+                                                    direction = dataMap["direction"]?.toString() ?: "",
+                                                    timestamp = dataMap["timestamp"]?.toString() ?: "",
+                                                    price = (dataMap["price"] as? Number)?.toDouble() ?: 0.0,
+                                                    volume = (dataMap["volume"] as? Number)?.toDouble() ?: 0.0,
+                                                    cciValue = (dataMap["cciValue"] as? Number)?.toDouble() ?: 0.0,
+                                                    cciBreakoutValue = (dataMap["cciBreakoutValue"] as? Number)?.toDouble() ?: 0.0,
+                                                    cciEntryValue = (dataMap["cciEntryValue"] as? Number)?.toDouble() ?: 0.0,
+                                                    reason = dataMap["reason"]?.toString() ?: "",
+                                                    timeframe = dataMap["timeframe"]?.toString() ?: "",
+                                                    status = dataMap["status"]?.toString() ?: "ACTIVE",
+                                                    isRead = dataMap["isRead"] as? Boolean ?: false
+                                                )
+                                            } catch (e: Exception) {
+                                                Log.e(TAG, "시그널 파싱 오류: ${e.message}")
+                                                null
+                                            }
+                                        } else null
+                                    }
+                                } else {
+                                    emptyList()
                                 }
 
-                                Log.d(TAG, "신호 조회 성공: ${signals.size}개")
+                                Log.d(TAG, "시그널 조회 성공: ${signals.size}개")
                                 callback(signals, null)
-                            } else {
-                                Log.d(TAG, "신호 데이터가 없음")
-                                callback(emptyList(), null)
+                            } catch (e: Exception) {
+                                Log.e(TAG, "응답 파싱 오류: ${e.message}")
+                                callback(null, "응답 파싱 오류: ${e.message}")
                             }
-                        } catch (e: Exception) {
-                            Log.e(TAG, "응답 파싱 오류: ${e.message}")
-                            callback(null, "응답 파싱 오류: ${e.message}")
+                        } else {
+                            callback(null, result?.message)
                         }
                     } else {
-                        callback(null, result?.message)
+                        callback(null, "서버 오류: ${response.code()}")
                     }
-                } else {
-                    Log.e(TAG, "신호 조회 실패: HTTP ${response.code()}")
-                    callback(null, "서버 응답 오류: ${response.code()}")
                 }
-            }
 
-            override fun onFailure(call: Call<MarketSignalApiResponse>, t: Throwable) {
-                Log.e(TAG, "신호 조회 네트워크 오류: ${t.message}")
-                callback(null, "네트워크 오류: ${t.message}")
-            }
-        })
+                override fun onFailure(call: Call<MarketSignalApiResponse>, t: Throwable) {
+                    Log.e(TAG, "시그널 조회 네트워크 오류: ${t.message}")
+                    callback(null, "네트워크 오류: ${t.message}")
+                }
+            })
     }
 
-    // ===== 상태 기반 실시간 모니터링 =====
+    // ===== 상태 관리 유틸리티 =====
 
     /**
-     * 상태 기반 실시간 시세포착 모니터링
+     * 모든 돌파 상태 조회
      */
-    suspend fun startSignalMonitoring(
-        config: MarketSignalConfig,
-        onSignalDetected: (MarketSignal) -> Unit
+    fun getAllBreakoutStates(
+        username: String,
+        callback: (List<BreakoutStateData>?, String?) -> Unit
     ) {
-        Log.d(TAG, "🎯 상태 기반 시세포착 시작: ${config.symbol} (${config.timeframe} 차트)")
-        Log.d(TAG, "설정: 돌파값=${config.cciBreakoutValue}, 진입값=${config.cciEntryValue}, 체크간격=${config.checkInterval/60}분")
+        api.getAllBreakoutStates(username = username)
+            .enqueue(object : Callback<MarketSignalApiResponse> {
+                override fun onResponse(
+                    call: Call<MarketSignalApiResponse>,
+                    response: Response<MarketSignalApiResponse>
+                ) {
+                    if (response.isSuccessful) {
+                        val result = response.body()
+                        if (result?.success == true) {
+                            try {
+                                val statesData = result.data
+                                val states = if (statesData is List<*>) {
+                                    statesData.mapNotNull { item ->
+                                        if (item is Map<*, *>) {
+                                            val dataMap = item as Map<String, Any>
+                                            try {
+                                                BreakoutStateData(
+                                                    configId = dataMap["configId"]?.toString() ?: "",
+                                                    currentState = CciSignalState.valueOf(
+                                                        dataMap["currentState"]?.toString() ?: "NO_BREAKOUT"
+                                                    ),
+                                                    lastCciValue = (dataMap["lastCciValue"] as? Number)?.toDouble() ?: 0.0,
+                                                    breakoutValue = (dataMap["breakoutValue"] as? Number)?.toDouble() ?: 100.0,
+                                                    entryValue = (dataMap["entryValue"] as? Number)?.toDouble() ?: 90.0,
+                                                    lastCheckTime = System.currentTimeMillis()
+                                                )
+                                            } catch (e: Exception) {
+                                                Log.e(TAG, "상태 파싱 오류: ${e.message}")
+                                                null
+                                            }
+                                        } else null
+                                    }
+                                } else {
+                                    emptyList()
+                                }
 
-        while (config.isActive) {
-            try {
-                // 1. 현재 CCI 값 계산
-                val currentCci = getCurrentCci(config)
-
-                if (currentCci != null) {
-                    // 2. 상태 기반 시그널 처리
-                    processStateBasedSignal(config, currentCci, onSignalDetected)
-                }
-
-                // 3. 설정된 인터벌만큼 대기
-                delay(config.checkInterval * 1000L)
-
-            } catch (e: Exception) {
-                Log.e(TAG, "모니터링 오류: ${e.message}")
-                delay(60000)
-            }
-        }
-    }
-
-    /**
-     * 현재 CCI 값 계산
-     */
-    private suspend fun getCurrentCci(config: MarketSignalConfig): Double? {
-        return try {
-            val klineData = getKlineData(config.symbol, config.timeframe, 100)
-            if (klineData.isNotEmpty()) {
-                val cciValues = calculateCCI(klineData, config.cciPeriod)
-                if (cciValues.isNotEmpty()) {
-                    cciValues.last().cciValue
-                } else null
-            } else null
-        } catch (e: Exception) {
-            Log.e(TAG, "CCI 계산 오류: ${e.message}")
-            null
-        }
-    }
-
-    /**
-     * 상태 기반 시그널 처리 로직
-     */
-    private suspend fun processStateBasedSignal(
-        config: MarketSignalConfig,
-        currentCci: Double,
-        onSignalDetected: (MarketSignal) -> Unit
-    ) {
-        val currentTime = System.currentTimeMillis()
-        val configId = config.id
-
-        // 현재 상태 가져오기 (없으면 초기 상태로 생성)
-        val currentState = monitoringStates[configId] ?: CciMonitoringState(
-            configId = configId,
-            currentState = CciSignalState.NO_BREAKOUT,
-            lastCciValue = currentCci,
-            lastCheckTime = currentTime,
-            breakoutValue = config.cciBreakoutValue,
-            entryValue = config.cciEntryValue
-        )
-
-        Log.d(TAG, "📊 ${config.symbol} CCI: ${currentCci} (상태: ${currentState.currentState})")
-
-        when (currentState.currentState) {
-            CciSignalState.NO_BREAKOUT -> {
-                // 미돌파 상태에서 돌파 조건 체크
-                val newState = checkBreakoutCondition(currentState, currentCci, config)
-                monitoringStates[configId] = newState
-
-                if (newState.currentState != CciSignalState.NO_BREAKOUT) {
-                    val direction = if (newState.currentState == CciSignalState.LONG_BREAKOUT) "LONG" else "SHORT"
-                    Log.d(TAG, "🔥 돌파 감지: ${config.symbol} $direction (CCI: $currentCci)")
-                }
-            }
-
-            CciSignalState.LONG_BREAKOUT -> {
-                // 롱 돌파 상태에서 진입 조건 체크
-                if (currentCci >= -config.cciEntryValue) {
-                    // 진입 조건 만족 → 시그널 생성 및 상태 리셋
-                    generateSignal(config, currentCci, "LONG", "CCI 롱 돌파 후 진입", onSignalDetected)
-
-                    // 상태를 미돌파로 리셋
-                    monitoringStates[configId] = currentState.copy(
-                        currentState = CciSignalState.NO_BREAKOUT,
-                        lastCciValue = currentCci,
-                        lastCheckTime = currentTime
-                    )
-
-                    Log.d(TAG, "✅ 롱 진입 완료 및 상태 리셋: ${config.symbol}")
-                } else {
-                    // 진입 조건 미만족 → 상태 유지
-                    monitoringStates[configId] = currentState.copy(
-                        lastCciValue = currentCci,
-                        lastCheckTime = currentTime
-                    )
-                }
-            }
-
-            CciSignalState.SHORT_BREAKOUT -> {
-                // 숏 돌파 상태에서 진입 조건 체크
-                if (currentCci <= config.cciEntryValue) {
-                    // 진입 조건 만족 → 시그널 생성 및 상태 리셋
-                    generateSignal(config, currentCci, "SHORT", "CCI 숏 돌파 후 진입", onSignalDetected)
-
-                    // 상태를 미돌파로 리셋
-                    monitoringStates[configId] = currentState.copy(
-                        currentState = CciSignalState.NO_BREAKOUT,
-                        lastCciValue = currentCci,
-                        lastCheckTime = currentTime
-                    )
-
-                    Log.d(TAG, "✅ 숏 진입 완료 및 상태 리셋: ${config.symbol}")
-                } else {
-                    // 진입 조건 미만족 → 상태 유지
-                    monitoringStates[configId] = currentState.copy(
-                        lastCciValue = currentCci,
-                        lastCheckTime = currentTime
-                    )
-                }
-            }
-        }
-    }
-
-    /**
-     * 돌파 조건 체크 및 상태 업데이트
-     */
-    private fun checkBreakoutCondition(
-        currentState: CciMonitoringState,
-        currentCci: Double,
-        config: MarketSignalConfig
-    ): CciMonitoringState {
-        return when {
-            // 롱 돌파 조건: CCI가 -돌파값 아래로 내려감
-            currentCci <= -config.cciBreakoutValue -> {
-                currentState.copy(
-                    currentState = CciSignalState.LONG_BREAKOUT,
-                    lastCciValue = currentCci,
-                    lastCheckTime = System.currentTimeMillis()
-                )
-            }
-
-            // 숏 돌파 조건: CCI가 +돌파값 위로 올라감
-            currentCci >= config.cciBreakoutValue -> {
-                currentState.copy(
-                    currentState = CciSignalState.SHORT_BREAKOUT,
-                    lastCciValue = currentCci,
-                    lastCheckTime = System.currentTimeMillis()
-                )
-            }
-
-            // 돌파 조건 미만족
-            else -> {
-                currentState.copy(
-                    lastCciValue = currentCci,
-                    lastCheckTime = System.currentTimeMillis()
-                )
-            }
-        }
-    }
-
-    /**
-     * 시그널 생성 및 전송
-     */
-    private suspend fun generateSignal(
-        config: MarketSignalConfig,
-        currentCci: Double,
-        direction: String,
-        reason: String,
-        onSignalDetected: (MarketSignal) -> Unit
-    ) {
-        try {
-            // 현재 가격 정보 가져오기
-            val klineData = getKlineData(config.symbol, config.timeframe, 1)
-            val currentPrice = if (klineData.isNotEmpty()) klineData.last().close else 0.0
-            val currentVolume = if (klineData.isNotEmpty()) klineData.last().volume else 0.0
-
-            val signal = MarketSignal(
-                configId = config.id,
-                username = config.username,
-                symbol = config.symbol,
-                signalType = config.signalType,
-                direction = direction,
-                price = currentPrice,
-                volume = currentVolume,
-                cciValue = currentCci,
-                cciBreakoutValue = config.cciBreakoutValue,
-                cciEntryValue = config.cciEntryValue,
-                reason = reason,
-                timeframe = config.timeframe
-            )
-
-            Log.d(TAG, "🚨 시그널 생성: ${config.symbol} $direction (CCI: $currentCci, 가격: $currentPrice)")
-            onSignalDetected(signal)
-
-        } catch (e: Exception) {
-            Log.e(TAG, "시그널 생성 오류: ${e.message}")
-        }
-    }
-
-    // ===== CCI 계산 및 데이터 처리 =====
-
-    /**
-     * CCI 계산 함수
-     */
-    fun calculateCCI(klineData: List<KlineData>, period: Int = 20): List<CciValue> {
-        if (klineData.size < period) return emptyList()
-
-        val results = mutableListOf<CciValue>()
-
-        for (i in period - 1 until klineData.size) {
-            val periodData = klineData.subList(i - period + 1, i + 1)
-
-            // Typical Price 계산
-            val typicalPrices = periodData.map { it.typical }
-            val smaTypical = typicalPrices.average()
-
-            // Mean Deviation 계산
-            val meanDeviation = typicalPrices.map { abs(it - smaTypical) }.average()
-
-            // CCI 계산
-            val cci = if (meanDeviation != 0.0) {
-                (typicalPrices.last() - smaTypical) / (0.015 * meanDeviation)
-            } else {
-                0.0
-            }
-
-            results.add(
-                CciValue(
-                    timestamp = klineData[i].timestamp,
-                    price = klineData[i].close,
-                    volume = klineData[i].volume,
-                    cciValue = cci
-                )
-            )
-        }
-
-        return results
-    }
-
-    /**
-     * 바이낸스 K-line 데이터 가져오기
-     */
-    suspend fun getKlineData(
-        symbol: String,
-        interval: String,
-        limit: Int = 100
-    ): List<KlineData> {
-        return withContext(Dispatchers.IO) {
-            try {
-                val response = binanceApi.getKlines(
-                    symbol = symbol,
-                    interval = interval,
-                    limit = limit
-                )
-
-                val klineList = mutableListOf<KlineData>()
-
-                if (response.isSuccessful && response.body() != null) {
-                    val klineArray = response.body()!!
-
-                    for (klineData in klineArray) {
-                        try {
-                            val klineArrayItem = klineData as List<*>
-                            val kline = KlineData(
-                                timestamp = (klineArrayItem[0] as? Number)?.toLong() ?: 0L,
-                                open = (klineArrayItem[1] as? String)?.toDoubleOrNull() ?: 0.0,
-                                high = (klineArrayItem[2] as? String)?.toDoubleOrNull() ?: 0.0,
-                                low = (klineArrayItem[3] as? String)?.toDoubleOrNull() ?: 0.0,
-                                close = (klineArrayItem[4] as? String)?.toDoubleOrNull() ?: 0.0,
-                                volume = (klineArrayItem[5] as? String)?.toDoubleOrNull() ?: 0.0
-                            )
-                            klineList.add(kline)
-                        } catch (e: Exception) {
-                            Log.e(TAG, "K-line 데이터 파싱 오류: ${e.message}")
-                            continue
+                                callback(states, null)
+                            } catch (e: Exception) {
+                                callback(null, "파싱 오류: ${e.message}")
+                            }
+                        } else {
+                            callback(null, result?.message)
                         }
+                    } else {
+                        callback(null, "서버 오류: ${response.code()}")
                     }
-
-                    Log.d(TAG, "K-line 데이터 조회 성공: ${klineList.size}개")
-                    klineList
-                } else {
-                    Log.e(TAG, "K-line API 응답 실패: ${response.code()}")
-                    emptyList()
                 }
-            } catch (e: Exception) {
-                Log.e(TAG, "K-line 데이터 가져오기 실패: ${e.message}")
-                emptyList()
-            }
-        }
-    }
 
-    // ===== 유틸리티 함수들 =====
-
-    /**
-     * 모니터링 상태 초기화 (설정 변경 시 사용)
-     */
-    fun resetMonitoringState(configId: String) {
-        monitoringStates.remove(configId)
-        Log.d(TAG, "모니터링 상태 초기화: $configId")
+                override fun onFailure(call: Call<MarketSignalApiResponse>, t: Throwable) {
+                    callback(null, "네트워크 오류: ${t.message}")
+                }
+            })
     }
 
     /**
-     * 모든 모니터링 상태 조회 (디버깅용)
+     * 돌파 상태 삭제
      */
-    fun getAllMonitoringStates(): Map<String, CciMonitoringState> {
-        return monitoringStates.toMap()
-    }
+    fun deleteBreakoutState(
+        configId: String,
+        callback: (Boolean, String?) -> Unit
+    ) {
+        api.deleteBreakoutState(configId = configId)
+            .enqueue(object : Callback<MarketSignalApiResponse> {
+                override fun onResponse(
+                    call: Call<MarketSignalApiResponse>,
+                    response: Response<MarketSignalApiResponse>
+                ) {
+                    if (response.isSuccessful) {
+                        val result = response.body()
+                        callback(result?.success == true, result?.message)
+                    } else {
+                        callback(false, "서버 오류: ${response.code()}")
+                    }
+                }
 
-    /**
-     * 특정 설정의 현재 상태 조회
-     */
-    fun getMonitoringState(configId: String): CciMonitoringState? {
-        return monitoringStates[configId]
+                override fun onFailure(call: Call<MarketSignalApiResponse>, t: Throwable) {
+                    callback(false, "네트워크 오류: ${t.message}")
+                }
+            })
     }
 }
