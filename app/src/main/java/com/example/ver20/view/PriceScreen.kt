@@ -1,4 +1,4 @@
-// 업데이트된 시세 조회 화면 - CCI/RSI 지표 표시
+// 업데이트된 시세 조회 화면 - 즐겨찾기 코인 추가/삭제 기능 포함
 
 package com.example.ver20.view
 
@@ -9,9 +9,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.TrendingDown
-import androidx.compose.material.icons.filled.TrendingUp
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -28,6 +26,10 @@ import com.example.ver20.dao.UserData
 import com.example.ver20.dao.MongoDbService
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.Request
 import kotlin.math.abs
 
 // ===== 데이터 모델 =====
@@ -63,6 +65,7 @@ fun PriceScreen(
     var isRefreshing by remember { mutableStateOf(false) }
     var hasUserInfo by remember { mutableStateOf(false) }
     var currentUser by remember { mutableStateOf<UserData?>(null) }
+    var showAddCoinDialog by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     // 사용자 정보 확인 및 즐겨찾기 코인 로드
@@ -115,6 +118,41 @@ fun PriceScreen(
         } else {
             // 로그인하지 않은 경우 빈 목록
             coinIndicators = emptyList()
+        }
+    }
+
+    // 즐겨찾기 코인 목록 새로고침 함수
+    fun refreshFavoriteCoins() {
+        currentUser?.let { userData ->
+            val mongoService = MongoDbService()
+            mongoService.getFavoriteCoins(userData.username) { favoriteSymbols, error ->
+                scope.launch {
+                    if (error == null) {
+                        val favoriteCoins = favoriteSymbols.map { symbol ->
+                            val displayName = getDisplayName(symbol)
+                            CoinIndicatorInfo(
+                                symbol = symbol,
+                                displayName = displayName,
+                                currentPrice = 0.0,
+                                priceChange24h = 0.0,
+                                min15 = null,
+                                hour1 = null,
+                                hour4 = null,
+                                day1 = null,
+                                isLoading = true
+                            )
+                        }
+                        coinIndicators = favoriteCoins
+
+                        // 가격 정보 로드
+                        if (favoriteCoins.isNotEmpty()) {
+                            refreshIndicators(favoriteCoins) { updated ->
+                                coinIndicators = updated
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -188,6 +226,27 @@ fun PriceScreen(
                             )
                         }
                         Spacer(modifier = Modifier.width(8.dp))
+                    } else {
+                        // 코인 추가 버튼
+                        Button(
+                            onClick = { showAddCoinDialog = true },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color.White
+                            )
+                        ) {
+                            Icon(
+                                Icons.Default.Add,
+                                contentDescription = "코인 추가",
+                                tint = Color(0xFF2196F3)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                "코인추가",
+                                color = Color(0xFF2196F3),
+                                fontSize = 12.sp
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
                     }
 
                     Button(
@@ -251,7 +310,7 @@ fun PriceScreen(
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
                         if (hasUserInfo) {
-                            "시세조회 탭에서 코인을 추가하거나\n시세포착 설정을 통해 코인을 등록해주세요."
+                            "위의 '코인추가' 버튼을 눌러\n관심 코인을 추가해주세요."
                         } else {
                             "로그인 후 즐겨찾기 코인을\n등록하실 수 있습니다."
                         },
@@ -278,19 +337,59 @@ fun PriceScreen(
                                 }
                             }
                         }
+                    },
+                    onRemove = {
+                        // 즐겨찾기에서 코인 삭제
+                        currentUser?.let { userData ->
+                            val mongoService = MongoDbService()
+                            mongoService.removeFavoriteCoin(userData.username, coin.symbol) { success, message ->
+                                scope.launch {
+                                    if (success) {
+                                        Toast.makeText(context, "코인이 삭제되었습니다", Toast.LENGTH_SHORT).show()
+                                        refreshFavoriteCoins()
+                                    } else {
+                                        Toast.makeText(context, message ?: "삭제 실패", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            }
+                        }
                     }
                 )
             }
         }
     }
+
+    // 코인 추가 다이얼로그
+    if (showAddCoinDialog) {
+        AddCoinDialog(
+            onDismiss = { showAddCoinDialog = false },
+            onConfirm = { symbol ->
+                currentUser?.let { userData ->
+                    val mongoService = MongoDbService()
+                    mongoService.saveFavoriteCoin(userData.username, symbol) { success, message ->
+                        scope.launch {
+                            if (success) {
+                                Toast.makeText(context, "코인이 추가되었습니다", Toast.LENGTH_SHORT).show()
+                                refreshFavoriteCoins()
+                            } else {
+                                Toast.makeText(context, message ?: "추가 실패", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }
+                }
+                showAddCoinDialog = false
+            }
+        )
+    }
 }
 
-// ===== 코인 지표 카드 =====
+// ===== 코인 지표 카드 (삭제 버튼 추가) =====
 
 @Composable
 fun CoinIndicatorCard(
     coin: CoinIndicatorInfo,
-    onRefresh: () -> Unit
+    onRefresh: () -> Unit,
+    onRemove: () -> Unit
 ) {
     Card(
         modifier = Modifier
@@ -304,86 +403,252 @@ fun CoinIndicatorCard(
         Column(
             modifier = Modifier.padding(16.dp)
         ) {
-            // 헤더 (코인명 + 현재가) - 한 줄로 배치
+            // 헤더 (코인명 + 현재가 + 삭제 버튼)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // 왼쪽: 이모지 + 코인명
                 Row(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
                         getCoinEmoji(coin.symbol),
-                        fontSize = 18.sp
+                        fontSize = 20.sp
                     )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        coin.displayName,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF212121)
-                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column {
+                        Text(
+                            coin.displayName,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            coin.symbol,
+                            fontSize = 12.sp,
+                            color = Color(0xFF666666)
+                        )
+                    }
                 }
 
-                // 오른쪽: 현재가 + 변동률
-                if (coin.isLoading) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(16.dp),
-                        strokeWidth = 2.dp,
-                        color = Color(0xFF2196F3)
-                    )
-                } else {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.End
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.End
                     ) {
-                        Text(
-                            formatPrice(coin.currentPrice),
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF212121)
-                        )
-                        if (coin.priceChange24h != 0.0) {
-                            Spacer(modifier = Modifier.width(4.dp))
-                            val isPositive = coin.priceChange24h > 0
+                        if (coin.currentPrice > 0) {
                             Text(
-                                "${if (isPositive) "+" else ""}${String.format("%.1f", coin.priceChange24h)}%",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Medium,
-                                color = if (isPositive) Color(0xFF4CAF50) else Color(0xFFF44336)
+                                "$${String.format("%.4f", coin.currentPrice)}",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+
+                            val changeColor = if (coin.priceChange24h >= 0) {
+                                Color(0xFF4CAF50)
+                            } else {
+                                Color(0xFFF44336)
+                            }
+
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    if (coin.priceChange24h >= 0) {
+                                        Icons.Default.TrendingUp
+                                    } else {
+                                        Icons.Default.TrendingDown
+                                    },
+                                    contentDescription = null,
+                                    modifier = Modifier.size(12.dp),
+                                    tint = changeColor
+                                )
+                                Text(
+                                    "${if (coin.priceChange24h >= 0) "+" else ""}${String.format("%.2f", coin.priceChange24h)}%",
+                                    fontSize = 12.sp,
+                                    color = changeColor
+                                )
+                            }
+                        } else {
+                            Text(
+                                "로딩중...",
+                                fontSize = 12.sp,
+                                color = Color(0xFF999999)
                             )
                         }
+                    }
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    // 삭제 버튼
+                    IconButton(
+                        onClick = onRemove,
+                        modifier = Modifier.size(24.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Delete,
+                            contentDescription = "코인 삭제",
+                            tint = Color(0xFFE57373),
+                            modifier = Modifier.size(16.dp)
+                        )
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
-            // 지표 데이터를 한 줄에 표시 (15M, 1H, 4H, 1D)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically
+            // 기술적 지표 칩들 (2줄 배치)
+            Column(
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                // 15분
-                InlineTimeframeIndicator("15M", coin.min15)
-                // 1시간
-                InlineTimeframeIndicator("1H", coin.hour1)
-                // 4시간
-                InlineTimeframeIndicator("4H", coin.hour4)
-                // 1일
-                InlineTimeframeIndicator("1D", coin.day1)
+                // 첫 번째 줄: 15분, 1시간
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    InlineTimeframeIndicators("15분", coin.min15)
+                    InlineTimeframeIndicators("1시간", coin.hour1)
+                }
+
+                // 두 번째 줄: 4시간, 1일
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    InlineTimeframeIndicators("4시간", coin.hour4)
+                    InlineTimeframeIndicators("1일", coin.day1)
+                }
             }
         }
     }
 }
 
+// ===== 코인 추가 다이얼로그 =====
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AddCoinDialog(
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit
+) {
+    var selectedSymbol by remember { mutableStateOf("") }
+
+    // 인기 코인 목록
+    val popularCoins = listOf(
+        "BTCUSDT" to "비트코인",
+        "ETHUSDT" to "이더리움",
+        "BNBUSDT" to "바이낸스코인",
+        "XRPUSDT" to "리플",
+        "ADAUSDT" to "에이다",
+        "DOGEUSDT" to "도지코인",
+        "SOLUSDT" to "솔라나",
+        "DOTUSDT" to "폴카닷",
+        "MATICUSDT" to "폴리곤",
+        "LTCUSDT" to "라이트코인",
+        "AVAXUSDT" to "아발란체",
+        "LINKUSDT" to "체인링크",
+        "UNIUSDT" to "유니스왑",
+        "ATOMUSDT" to "코스모스",
+        "FILUSDT" to "파일코인"
+    )
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                "즐겨찾기 코인 추가",
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Column {
+                Text(
+                    "추가할 코인을 선택해주세요:",
+                    fontSize = 14.sp,
+                    color = Color(0xFF666666)
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                LazyColumn(
+                    modifier = Modifier.height(300.dp)
+                ) {
+                    items(popularCoins) { (symbol, name) ->
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 2.dp)
+                                .clickable { selectedSymbol = symbol },
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (selectedSymbol == symbol) {
+                                    Color(0xFFE3F2FD)
+                                } else {
+                                    Color(0xFFF5F5F5)
+                                }
+                            )
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    getCoinEmoji(symbol),
+                                    fontSize = 16.sp
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Column {
+                                    Text(
+                                        name,
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                    Text(
+                                        symbol,
+                                        fontSize = 12.sp,
+                                        color = Color(0xFF666666)
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.weight(1f))
+
+                                if (selectedSymbol == symbol) {
+                                    Icon(
+                                        Icons.Default.CheckCircle,
+                                        contentDescription = "선택됨",
+                                        tint = Color(0xFF2196F3),
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (selectedSymbol.isNotEmpty()) {
+                        onConfirm(selectedSymbol)
+                    }
+                },
+                enabled = selectedSymbol.isNotEmpty()
+            ) {
+                Text("추가")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("취소")
+            }
+        }
+    )
+}
+
 // ===== 인라인 시간대별 지표 =====
 
 @Composable
-fun InlineTimeframeIndicator(
+fun InlineTimeframeIndicators(
     timeframe: String,
     data: TechnicalIndicatorData?
 ) {
@@ -499,73 +764,32 @@ private fun getCoinEmoji(symbol: String): String {
     return when (symbol) {
         "BTCUSDT" -> "₿"
         "ETHUSDT" -> "Ξ"
-        "BNBUSDT" -> "🟡"
+        "BNBUSDT" -> "🔶"
         "XRPUSDT" -> "🌊"
-        "ADAUSDT" -> "🔷"
+        "ADAUSDT" -> "💎"
         "DOGEUSDT" -> "🐕"
         "SOLUSDT" -> "☀️"
         "DOTUSDT" -> "⚫"
-        "MATICUSDT" -> "🟣"
+        "MATICUSDT" -> "🔷"
         "LTCUSDT" -> "🥈"
-        "AVAXUSDT" -> "❄️"
+        "AVAXUSDT" -> "🏔️"
         "LINKUSDT" -> "🔗"
         "UNIUSDT" -> "🦄"
         "ATOMUSDT" -> "⚛️"
         "FILUSDT" -> "📁"
-        else -> "💎"
+        else -> "💰"
     }
 }
 
-private fun getInitialCoinList(): List<CoinIndicatorInfo> {
-    // 이제 빈 목록으로 시작 (사용자별 즐겨찾기에서 로드)
-    return emptyList()
-}
+// 초기 코인 목록 (빈 목록으로 시작)
+private fun getInitialCoinList(): List<CoinIndicatorInfo> = emptyList()
 
-// ===== 지표 계산 함수들 =====
-
-private suspend fun calculateCCI(priceData: List<PriceCandle>, period: Int = 20): Double {
-    if (priceData.size < period) return 0.0
-
-    val recentData = priceData.takeLast(period)
-    val typicalPrices = recentData.map { (it.high + it.low + it.close) / 3.0 }
-    val sma = typicalPrices.average()
-    val meanDeviation = typicalPrices.map { abs(it - sma) }.average()
-
-    val currentTypical = typicalPrices.last()
-    return if (meanDeviation != 0.0) {
-        (currentTypical - sma) / (0.015 * meanDeviation)
-    } else {
-        0.0
-    }
-}
-
-private suspend fun calculateRSI(priceData: List<PriceCandle>, period: Int = 14): Double {
-    if (priceData.size < period + 1) return 50.0
-
-    val changes = mutableListOf<Double>()
-    for (i in 1 until priceData.size) {
-        changes.add(priceData[i].close - priceData[i-1].close)
-    }
-
-    val recentChanges = changes.takeLast(period)
-    val gains = recentChanges.filter { it > 0 }.average().takeIf { !it.isNaN() } ?: 0.0
-    val losses = recentChanges.filter { it < 0 }.map { abs(it) }.average().takeIf { !it.isNaN() } ?: 0.0
-
-    return if (losses == 0.0) {
-        100.0
-    } else {
-        val rs = gains / losses
-        100.0 - (100.0 / (1.0 + rs))
-    }
-}
-
-// ===== 데이터 새로고침 함수들 =====
-
+// 가격 및 지표 정보 새로고침 함수들
 private suspend fun refreshIndicators(
-    current: List<CoinIndicatorInfo>,
+    coins: List<CoinIndicatorInfo>,
     onUpdate: (List<CoinIndicatorInfo>) -> Unit
 ) {
-    val updated = current.map { coin ->
+    val updated = coins.map { coin ->
         try {
             // 현재가격과 24시간 변동률 가져오기
             val priceInfo = fetchCurrentPrice(coin.symbol)
@@ -656,19 +880,37 @@ data class PriceCandle(
     val volume: Double
 )
 
-// ===== 현재가격 정보 =====
-
-data class PriceInfo(
-    val price: Double,
-    val change24h: Double
-)
-
 // ===== 현재가격 조회 =====
 
 private suspend fun fetchCurrentPrice(symbol: String): Pair<Double, Double> {
-    // 실제 구현에서는 바이낸스 24hr ticker API를 호출해야 함
-    delay(100) // API 호출 지연 시뮬레이션
+    return withContext(Dispatchers.IO) {
+        try {
+            val client = OkHttpClient()
+            val request = Request.Builder()
+                .url("https://api.binance.com/api/v3/ticker/24hr?symbol=$symbol")
+                .build()
 
+            val response = client.newCall(request).execute()
+            if (response.isSuccessful) {
+                val jsonString = response.body?.string() ?: ""
+                val jsonObject = org.json.JSONObject(jsonString)
+
+                val price = jsonObject.getDouble("lastPrice")
+                val change = jsonObject.getDouble("priceChangePercent")
+
+                Pair(price, change)
+            } else {
+                // API 실패시 시뮬레이션 데이터 사용
+                getSimulatedPrice(symbol)
+            }
+        } catch (e: Exception) {
+            // 네트워크 오류시 시뮬레이션 데이터 사용
+            getSimulatedPrice(symbol)
+        }
+    }
+}
+
+private fun getSimulatedPrice(symbol: String): Pair<Double, Double> {
     val basePrice = when (symbol) {
         "BTCUSDT" -> 43000.0
         "ETHUSDT" -> 2600.0
@@ -695,20 +937,50 @@ private suspend fun fetchCurrentPrice(symbol: String): Pair<Double, Double> {
     return Pair(currentPrice, change24h)
 }
 
-private fun formatPrice(price: Double): String {
-    return when {
-        price >= 1000 -> String.format("$%,.0f", price)
-        price >= 1 -> String.format("$%.2f", price)
-        price >= 0.01 -> String.format("$%.4f", price)
-        else -> String.format("$%.6f", price)
+private suspend fun fetchPriceData(symbol: String, timeframe: String): List<PriceCandle> {
+    return withContext(Dispatchers.IO) {
+        try {
+            val client = OkHttpClient()
+            val interval = when (timeframe) {
+                "15m" -> "15m"
+                "1h" -> "1h"
+                "4h" -> "4h"
+                "1d" -> "1d"
+                else -> "15m"
+            }
+
+            val request = Request.Builder()
+                .url("https://api.binance.com/api/v3/klines?symbol=$symbol&interval=$interval&limit=100")
+                .build()
+
+            val response = client.newCall(request).execute()
+            if (response.isSuccessful) {
+                val jsonString = response.body?.string() ?: ""
+                val jsonArray = org.json.JSONArray(jsonString)
+
+                (0 until jsonArray.length()).map { i ->
+                    val candle = jsonArray.getJSONArray(i)
+                    PriceCandle(
+                        timestamp = candle.getLong(0),
+                        open = candle.getDouble(1),
+                        high = candle.getDouble(2),
+                        low = candle.getDouble(3),
+                        close = candle.getDouble(4),
+                        volume = candle.getDouble(5)
+                    )
+                }
+            } else {
+                // API 실패시 시뮬레이션 데이터 사용
+                getSimulatedPriceData(symbol)
+            }
+        } catch (e: Exception) {
+            // 네트워크 오류시 시뮬레이션 데이터 사용
+            getSimulatedPriceData(symbol)
+        }
     }
 }
 
-private suspend fun fetchPriceData(symbol: String, timeframe: String): List<PriceCandle> {
-    // 실제 구현에서는 바이낸스 API를 호출해야 함
-    // 여기서는 실제 데이터를 시뮬레이션
-    delay(100) // API 호출 지연 시뮬레이션
-
+private fun getSimulatedPriceData(symbol: String): List<PriceCandle> {
     val basePrice = when (symbol) {
         "BTCUSDT" -> 43000.0
         "ETHUSDT" -> 2600.0
@@ -723,7 +995,7 @@ private suspend fun fetchPriceData(symbol: String, timeframe: String): List<Pric
         else -> 100.0
     }
 
-    // 시뮬레이션된 가격 데이터 생성 (실제로는 바이낸스 API에서 가져와야 함)
+    // 시뮬레이션된 가격 데이터 생성
     return (0 until 100).map { i ->
         val variation = (Math.random() - 0.5) * 0.04 // ±2% 변동
         val price = basePrice * (1 + variation)
@@ -735,5 +1007,43 @@ private suspend fun fetchPriceData(symbol: String, timeframe: String): List<Pric
             close = price,
             volume = Math.random() * 1000000
         )
+    }
+}
+
+// ===== CCI 계산 =====
+
+private fun calculateCCI(priceData: List<PriceCandle>, period: Int = 20): Double {
+    if (priceData.size < period) return 0.0
+
+    val recentData = priceData.takeLast(period)
+    val typicalPrices = recentData.map { (it.high + it.low + it.close) / 3.0 }
+    val sma = typicalPrices.average()
+    val meanDeviation = typicalPrices.map { abs(it - sma) }.average()
+
+    return if (meanDeviation == 0.0) {
+        0.0
+    } else {
+        (typicalPrices.last() - sma) / (0.015 * meanDeviation)
+    }
+}
+
+// ===== RSI 계산 =====
+
+private fun calculateRSI(priceData: List<PriceCandle>, period: Int = 7): Double {
+    if (priceData.size < period + 1) return 50.0
+
+    val recentData = priceData.takeLast(period + 1)
+    val changes = (1 until recentData.size).map {
+        recentData[it].close - recentData[it - 1].close
+    }
+
+    val gains = changes.filter { it > 0 }.average().takeIf { !it.isNaN() } ?: 0.0
+    val losses = changes.filter { it < 0 }.map { abs(it) }.average().takeIf { !it.isNaN() } ?: 0.0
+
+    return if (losses == 0.0) {
+        100.0
+    } else {
+        val rs = gains / losses
+        100.0 - (100.0 / (1.0 + rs))
     }
 }
