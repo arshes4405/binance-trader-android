@@ -191,45 +191,105 @@ class UserService {
         }
     }
 
-    // 로그인 (MongoDB user_settings 컬렉션에서 사용자 확인)
+    // UserData 생성을 위한 확장 함수
+    fun Map<String, Any>.toUserData(fallbackUsername: String): UserData? {
+        return try {
+            val id = when (val idValue = this["_id"]) {
+                is String -> idValue
+                else -> "user_${System.currentTimeMillis()}"
+            }
+
+            val username = when (val usernameValue = this["username"]) {
+                is String -> usernameValue
+                else -> fallbackUsername
+            }
+
+            val email = when (val emailValue = this["email"]) {
+                is String -> emailValue
+                else -> ""
+            }
+
+            val createdAt = when (val createdAtValue = this["createdAt"]) {
+                is String -> createdAtValue
+                is Number -> createdAtValue.toString()
+                else -> System.currentTimeMillis().toString()
+            }
+
+            UserData(_id = id, username = username, email = email, createdAt = createdAt)
+        } catch (e: Exception) {
+            Log.e("UserService", "UserData 변환 실패: ${e.message}")
+            null
+        }
+    }
+
+    // 개선된 로그인 함수
     fun loginUser(
         username: String,
         password: String,
         callback: (Boolean, UserData?, String?) -> Unit
     ) {
         try {
-            Log.d("UserService", "사용자 설정 조회 시작: $username")
+            Log.d("UserService", "사용자 로그인 시도: $username")
 
             val hashedPassword = hashPassword(password)
+            Log.d("UserService", "비밀번호 해시: ${hashedPassword.take(10)}...")
 
-            // MongoDbService를 활용해서 user_settings 컬렉션에서 사용자 조회
             val mongoService = MongoDbService()
             mongoService.getUserSettings(username) { success, userData, error ->
                 if (success && userData != null) {
-                    // 비밀번호 확인
-                    val storedPassword = userData["password"] as? String
-                    if (storedPassword == hashedPassword) {
-                        // 로그인 성공 - UserData 생성
-                        val userDataResult = UserData(
-                            _id = userData["_id"] as? String ?: "user_${System.currentTimeMillis()}",
-                            username = userData["username"] as? String ?: username,
-                            email = userData["email"] as? String ?: "",
-                            createdAt = userData["createdAt"] as? String ?: System.currentTimeMillis().toString()
-                        )
-                        Log.d("UserService", "로그인 성공: $username")
-                        callback(true, userDataResult, "로그인 성공")
-                    } else {
-                        Log.e("UserService", "비밀번호 불일치: $username")
-                        callback(false, null, "비밀번호가 일치하지 않습니다")
+                    try {
+                        // userData는 ApiResponse 구조이므로 data 필드에서 실제 데이터 추출
+                        val actualUserData = when (val dataField = userData["data"]) {
+                            is Map<*, *> -> {
+                                @Suppress("UNCHECKED_CAST")
+                                dataField as Map<String, Any>
+                            }
+                            else -> {
+                                Log.e("UserService", "data 필드가 Map이 아님: ${dataField?.javaClass}")
+                                callback(false, null, "사용자 데이터 구조 오류")
+                                return@getUserSettings
+                            }
+                        }
+
+                        // 이제 actualUserData에서 password 접근
+                        val storedPassword = when (val passwordValue = actualUserData["password"]) {
+                            is String -> passwordValue
+                            else -> {
+                                Log.e("UserService", "저장된 비밀번호가 String이 아님: ${passwordValue?.javaClass}")
+                                callback(false, null, "사용자 데이터 형식 오류")
+                                return@getUserSettings
+                            }
+                        }
+
+                        Log.d("UserService", "저장된 비밀번호 해시: ${storedPassword.take(10)}...")
+
+                        if (storedPassword == hashedPassword) {
+                            // 로그인 성공 - actualUserData에서 UserData 생성
+                            val userDataResult = actualUserData.toUserData(username)
+
+                            if (userDataResult != null) {
+                                Log.d("UserService", "✅ 로그인 성공: $username")
+                                callback(true, userDataResult, "로그인 성공")
+                            } else {
+                                Log.e("UserService", "❌ UserData 생성 실패")
+                                callback(false, null, "사용자 데이터 변환 실패")
+                            }
+                        } else {
+                            Log.e("UserService", "❌ 비밀번호 불일치")
+                            callback(false, null, "비밀번호가 일치하지 않습니다")
+                        }
+                    } catch (e: Exception) {
+                        Log.e("UserService", "❌ 로그인 처리 중 예외: ${e.message}", e)
+                        callback(false, null, "로그인 처리 중 오류: ${e.message}")
                     }
                 } else {
-                    Log.e("UserService", "사용자를 찾을 수 없음: $username, error: $error")
+                    Log.e("UserService", "❌ 사용자 조회 실패: $error")
                     callback(false, null, error ?: "사용자를 찾을 수 없습니다")
                 }
             }
 
         } catch (e: Exception) {
-            Log.e("UserService", "로그인 중 예외 발생: ${e.message}", e)
+            Log.e("UserService", "❌ 로그인 중 예외 발생: ${e.message}", e)
             callback(false, null, "로그인 중 오류가 발생했습니다: ${e.message}")
         }
     }

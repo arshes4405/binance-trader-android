@@ -62,6 +62,12 @@ interface RawApi {
         @Query("action") action: String = "getFavoriteCoins",
         @Query("username") username: String
     ): Call<okhttp3.ResponseBody>
+
+    @GET("api")
+    fun getUserSettingsRaw(
+        @Query("action") action: String = "getUserSettings",
+        @Query("username") username: String
+    ): Call<okhttp3.ResponseBody>
 }
 
 // 응답 데이터 클래스
@@ -283,28 +289,85 @@ class MongoDbService {
     ) {
         Log.d("MongoDbService", "사용자 설정 조회: $username")
 
-        api.getUserSettings(username = username).enqueue(object : Callback<ApiResponse> {
-            override fun onResponse(call: Call<ApiResponse>, response: Response<ApiResponse>) {
-                if (response.isSuccessful && response.body()?.success == true) {
+        // Raw API 호출로 실제 응답 구조 확인
+        val rawRetrofit = Retrofit.Builder()
+            .baseUrl(baseUrl)
+            .build()
+
+        val rawApi = rawRetrofit.create(RawApi::class.java)
+
+        val rawCall = rawApi.getUserSettingsRaw(username = username)
+        Log.d("MongoDbService", "요청 URL: ${rawCall.request().url}")
+
+        rawCall.enqueue(object : Callback<okhttp3.ResponseBody> {
+            override fun onResponse(call: Call<okhttp3.ResponseBody>, response: Response<okhttp3.ResponseBody>) {
+                Log.d("MongoDbService", "사용자 조회 응답: ${response.code()}")
+
+                if (response.isSuccessful) {
                     try {
-                        val data = response.body()?.data
-                        if (data is Map<*, *>) {
-                            @Suppress("UNCHECKED_CAST")
-                            val userData = data as Map<String, Any>
+                        val jsonString = response.body()?.string() ?: ""
+                        Log.d("MongoDbService", "원본 JSON 응답: $jsonString")
+
+                        val gson = com.google.gson.Gson()
+
+                        if (jsonString.trim().startsWith("{") && jsonString.contains("\"_id\"")) {
+                            // 직접 MongoDB 문서 응답인 경우
+                            val type = object : com.google.gson.reflect.TypeToken<Map<String, Any>>() {}.type
+                            val userData: Map<String, Any> = gson.fromJson(jsonString, type)
+
+                            Log.d("MongoDbService", "✅ 직접 MongoDB 문서 파싱 성공: $userData")
                             callback(true, userData, null)
+
+                        } else if (jsonString.trim().startsWith("{") && jsonString.contains("\"success\"")) {
+                            // ApiResponse 래핑된 응답인 경우
+                            val apiResponse = gson.fromJson(jsonString, ApiResponse::class.java)
+
+                            if (apiResponse.success == true && apiResponse.data != null) {
+                                when (val data = apiResponse.data) {
+                                    is Map<*, *> -> {
+                                        @Suppress("UNCHECKED_CAST")
+                                        val userData = data as Map<String, Any>
+                                        Log.d("MongoDbService", "✅ ApiResponse 래핑 파싱 성공: $userData")
+                                        callback(true, userData, null)
+                                    }
+                                    else -> {
+                                        Log.e("MongoDbService", "❌ 데이터 형식 오류: ${data?.javaClass}")
+                                        callback(false, null, "데이터 형식 오류")
+                                    }
+                                }
+                            } else {
+                                val error = apiResponse.message ?: "사용자 조회 실패"
+                                Log.e("MongoDbService", "❌ API 응답 오류: $error")
+                                callback(false, null, error)
+                            }
                         } else {
-                            callback(false, null, "데이터 형식 오류")
+                            Log.e("MongoDbService", "❌ 알 수 없는 응답 형식: $jsonString")
+                            callback(false, null, "알 수 없는 응답 형식")
                         }
+
                     } catch (e: Exception) {
-                        callback(false, null, "데이터 파싱 오류: ${e.message}")
+                        Log.e("MongoDbService", "❌ JSON 파싱 오류: ${e.message}")
+                        e.printStackTrace()
+                        callback(false, null, "JSON 파싱 오류: ${e.message}")
                     }
                 } else {
-                    val error = response.body()?.message ?: "사용자 조회 실패"
+                    val error = "사용자 조회 실패 (코드: ${response.code()})"
+                    Log.e("MongoDbService", "❌ $error")
+
+                    // 에러 응답 본문도 로깅
+                    try {
+                        val errorBody = response.errorBody()?.string()
+                        Log.e("MongoDbService", "에러 응답: $errorBody")
+                    } catch (e: Exception) {
+                        Log.e("MongoDbService", "에러 응답 읽기 실패: ${e.message}")
+                    }
+
                     callback(false, null, error)
                 }
             }
 
-            override fun onFailure(call: Call<ApiResponse>, t: Throwable) {
+            override fun onFailure(call: Call<okhttp3.ResponseBody>, t: Throwable) {
+                Log.e("MongoDbService", "❌ 네트워크 오류: ${t.message}")
                 callback(false, null, "네트워크 오류: ${t.message}")
             }
         })
