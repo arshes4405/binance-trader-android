@@ -16,9 +16,9 @@
     <string name="check_interval_label">진입체크 인터벌</string>
     <string name="seed_money_label">진입시드</string>
 
-    <!-- 검증 메시지 -->
-    <string name="validation_interval_min">진입체크 인터벌은 10초 이상이어야 합니다</string>
-    <string name="validation_interval_max">진입체크 인터벌은 1시간 이하여야 합니다</string>
+    <!-- 검증 메시지 (분 단위로 변경) -->
+    <string name="validation_interval_min">진입체크 인터벌은 15분 이상이어야 합니다</string>
+    <string name="validation_interval_max">진입체크 인터벌은 24시간(1440분) 이하여야 합니다</string>
     <string name="validation_period_min">CCI 기간은 5 이상이어야 합니다</string>
     <string name="validation_period_max">CCI 기간은 200 이하여야 합니다</string>
     <string name="validation_entry_breakout">CCI 진입값은 돌파값보다 작아야 합니다</string>
@@ -35,4 +35,9 @@
     <string name="saving">저장 중...</string>
     <string name="no_signals">포착된 신호가 없습니다</string>
     <string name="no_active_configs">활성화된 설정이 없습니다</string>
+
+    <!-- 인터벌 관련 추가 메시지 -->
+    <string name="interval_unit_minutes">분</string>
+    <string name="interval_help_text">최소 15분부터 설정 가능 (백그라운드 제약)</string>
+    <string name="interval_background_limit">Android 백그라운드 제약으로 인해 15분 미만 설정 불가</string>
 </resources>

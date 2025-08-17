@@ -1,9 +1,12 @@
-// CciSignalSettingsScreen.kt - CCI 시세포착 설정 화면
+// CciSignalSettingsScreen.kt - CCI 시세포착 설정 화면 (분 단위 인터벌)
 
 package com.example.ver20.view
 
 import android.widget.Toast
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -35,11 +38,11 @@ fun CciSignalSettingsScreen(
 
     // 사용자 정보
     var currentUser by remember { mutableStateOf<UserData?>(null) }
-    
-    // 설정값들
+
+    // 설정값들 (진입체크 인터벌을 분 단위로 변경)
     var selectedSymbol by remember { mutableStateOf("BTCUSDT") }
     var selectedTimeframe by remember { mutableStateOf("15m") }
-    var checkInterval by remember { mutableStateOf("30") } // 초
+    var checkInterval by remember { mutableStateOf("15") } // 분 단위로 변경
     var cciPeriod by remember { mutableStateOf("20") }
     var cciBreakoutValue by remember { mutableStateOf("100") }
     var cciEntryValue by remember { mutableStateOf("90") }
@@ -58,127 +61,172 @@ fun CciSignalSettingsScreen(
     // 시간대 옵션
     val timeframeOptions = listOf(
         "15m" to "15분",
-        "1h" to "1시간", 
+        "1h" to "1시간",
         "4h" to "4시간"
     )
 
-    // 인기 코인 목록
+    // 인기 심볼 목록
     val popularSymbols = listOf(
-        "BTCUSDT", "ETHUSDT", "BNBUSDT", "ADAUSDT", "DOTUSDT",
-        "LINKUSDT", "LTCUSDT", "XRPUSDT", "SOLUSDT", "DOGEUSDT"
+        "BTCUSDT", "ETHUSDT", "BNBUSDT", "XRPUSDT", "ADAUSDT",
+        "DOGEUSDT", "SOLUSDT", "DOTUSDT", "MATICUSDT", "LTCUSDT"
     )
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = {
-                    Text(
-                        "CCI 시세포착 설정",
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
-                },
+                title = { Text("CCI 시세포착 설정") },
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
-                        Icon(
-                            Icons.Default.ArrowBack,
-                            contentDescription = "뒤로가기",
-                            tint = Color.White
-                        )
+                        Icon(Icons.Default.ArrowBack, contentDescription = "뒤로가기")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color(0xFF2196F3),
-                    titleContentColor = Color.White
+                    containerColor = Color(0xFF1976D2),
+                    titleContentColor = Color.White,
+                    navigationIconContentColor = Color.White
                 )
             )
         }
     ) { paddingValues ->
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // CCI 전략 설명 카드
-            CciExplanationCard()
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp)
+                    .padding(top = 16.dp, bottom = 32.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                // CCI 전략 설명 카드
+                CciExplanationCard()
 
-            // 기본 설정 카드
-            BasicSettingsCard(
-                selectedSymbol = selectedSymbol,
-                selectedTimeframe = selectedTimeframe,
-                checkInterval = checkInterval,
-                seedMoney = seedMoney,
-                onSymbolClick = { showSymbolDialog = true },
-                onTimeframeChange = { selectedTimeframe = it },
-                onCheckIntervalChange = { checkInterval = it },
-                onSeedMoneyChange = { seedMoney = it },
-                timeframeOptions = timeframeOptions
-            )
+                // 기본 설정 카드
+                BasicSettingsCard(
+                    selectedSymbol = selectedSymbol,
+                    selectedTimeframe = selectedTimeframe,
+                    checkInterval = checkInterval,
+                    seedMoney = seedMoney,
+                    onSymbolClick = { showSymbolDialog = true },
+                    onTimeframeChange = { selectedTimeframe = it },
+                    onCheckIntervalChange = { checkInterval = it },
+                    onSeedMoneyChange = { seedMoney = it },
+                    timeframeOptions = timeframeOptions
+                )
 
-            // CCI 지표 설정 카드
-            CciIndicatorSettingsCard(
-                cciPeriod = cciPeriod,
-                cciBreakoutValue = cciBreakoutValue,
-                cciEntryValue = cciEntryValue,
-                onCciPeriodChange = { cciPeriod = it },
-                onBreakoutValueChange = { cciBreakoutValue = it },
-                onEntryValueChange = { cciEntryValue = it }
-            )
+                // CCI 지표 설정 카드
+                CciIndicatorSettingsCard(
+                    cciPeriod = cciPeriod,
+                    cciBreakoutValue = cciBreakoutValue,
+                    cciEntryValue = cciEntryValue,
+                    onCciPeriodChange = { cciPeriod = it },
+                    onBreakoutValueChange = { cciBreakoutValue = it },
+                    onEntryValueChange = { cciEntryValue = it }
+                )
 
-            // 활성화 설정
-            ActiveSettingCard(
-                isActive = isActive,
-                onActiveChange = { isActive = it }
-            )
-
-            // 저장 버튼
-            SaveButton(
-                isSaving = isSaving,
-                onClick = {
-                    if (currentUser == null) {
-                        Toast.makeText(context, "로그인이 필요합니다.", Toast.LENGTH_SHORT).show()
-                        return@SaveButton
-                    }
-
-                    // 입력값 검증
-                    if (!validateInputs(
-                        checkInterval, cciPeriod, cciBreakoutValue, 
-                        cciEntryValue, seedMoney, context
-                    )) {
-                        return@SaveButton
-                    }
-
-                    isSaving = true
-
-                    val config = MarketSignalConfig(
-                        username = currentUser!!.username,
-                        signalType = "CCI",
-                        symbol = selectedSymbol,
-                        timeframe = selectedTimeframe,
-                        checkInterval = checkInterval.toInt(),
-                        cciPeriod = cciPeriod.toInt(),
-                        cciBreakoutValue = cciBreakoutValue.toDouble(),
-                        cciEntryValue = cciEntryValue.toDouble(),
-                        seedMoney = seedMoney.toDouble(),
-                        isActive = isActive
+                // 활성화 상태 설정
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = Color.White
                     )
-
-                    coroutineScope.launch {
-                        marketSignalService.saveSignalConfig(config) { success, message ->
-                            isSaving = false
-                            if (success) {
-                                Toast.makeText(context, "CCI 시세포착 설정이 저장되었습니다.", Toast.LENGTH_SHORT).show()
-                                onSettingsSaved(config)
-                            } else {
-                                Toast.makeText(context, "저장 실패: $message", Toast.LENGTH_LONG).show()
-                            }
-                        }
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "설정 활성화",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Switch(
+                            checked = isActive,
+                            onCheckedChange = { isActive = it }
+                        )
                     }
                 }
-            )
+
+                // 저장 버튼
+                Button(
+                    onClick = {
+                        if (currentUser == null) {
+                            Toast.makeText(context, "로그인이 필요합니다.", Toast.LENGTH_SHORT).show()
+                            return@Button
+                        }
+
+                        if (validateInputs(
+                                context = context,
+                                interval = checkInterval,
+                                period = cciPeriod,
+                                breakout = cciBreakoutValue,
+                                entry = cciEntryValue,
+                                seed = seedMoney
+                            )) {
+
+                            isSaving = true
+                            coroutineScope.launch {
+                                // 분 단위를 초 단위로 변환하여 저장
+                                val intervalInSeconds = checkInterval.toInt() * 60
+
+                                val config = MarketSignalConfig(
+                                    username = currentUser!!.username,
+                                    signalType = "CCI",
+                                    symbol = selectedSymbol,
+                                    timeframe = selectedTimeframe,
+                                    checkInterval = intervalInSeconds,
+                                    cciPeriod = cciPeriod.toInt(),
+                                    cciBreakoutValue = cciBreakoutValue.toDouble(),
+                                    cciEntryValue = cciEntryValue.toDouble(),
+                                    seedMoney = seedMoney.toDouble(),
+                                    isActive = isActive
+                                )
+
+                                marketSignalService.saveSignalConfig(config) { success, message ->
+                                    isSaving = false
+                                    if (success) {
+                                        Toast.makeText(context, "설정이 저장되었습니다.", Toast.LENGTH_SHORT).show()
+                                        onSettingsSaved(config)
+                                    } else {
+                                        Toast.makeText(context, "저장 실패: $message", Toast.LENGTH_LONG).show()
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp),
+                    enabled = !isSaving,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF4CAF50)
+                    )
+                ) {
+                    if (isSaving) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            color = Color.White
+                        )
+                    } else {
+                        Icon(Icons.Default.Save, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            "설정 저장",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+
+                // 추가 하단 여백
+                Spacer(modifier = Modifier.height(16.dp))
+            }
         }
     }
 
@@ -187,7 +235,7 @@ fun CciSignalSettingsScreen(
         SymbolSelectionDialog(
             symbols = popularSymbols,
             selectedSymbol = selectedSymbol,
-            onSymbolSelected = { 
+            onSymbolSelected = {
                 selectedSymbol = it
                 showSymbolDialog = false
             },
@@ -229,9 +277,9 @@ private fun CciExplanationCard() {
 
             Text(
                 "• 롱 진입: CCI가 -돌파값 아래로 이탈 이후 -진입값 안으로 진입시\n" +
-                "• 숏 진입: CCI가 +돌파값 위로 이탈 이후 +진입값 안으로 진입시\n" +
-                "• 설정된 인터벌마다 자동으로 조건을 체크합니다\n" +
-                "• 조건 충족 시 시세포착 알림이 생성됩니다",
+                        "• 숏 진입: CCI가 +돌파값 위로 이탈 이후 +진입값 안으로 진입시\n" +
+                        "• 설정된 인터벌마다 자동으로 조건을 체크합니다\n" +
+                        "• 조건 충족 시 시세포착 알림이 생성됩니다",
                 fontSize = 13.sp,
                 color = Color(0xFF424242),
                 lineHeight = 18.sp
@@ -309,13 +357,20 @@ private fun BasicSettingsCard(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // 진입체크 인터벌
+            // 진입체크 인터벌 (분 단위)
             OutlinedTextField(
                 value = checkInterval,
                 onValueChange = onCheckIntervalChange,
-                label = { Text("진입체크 인터벌 (초)") },
+                label = { Text("진입체크 인터벌 (분)") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                supportingText = {
+                    Text(
+                        "최소 15분부터 설정 가능 (백그라운드 제약)",
+                        fontSize = 12.sp,
+                        color = Color(0xFF666666)
+                    )
+                }
             )
 
             Spacer(modifier = Modifier.height(12.dp))
@@ -377,7 +432,7 @@ private fun CciIndicatorSettingsCard(
                 label = { Text("CCI 돌파값") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 modifier = Modifier.fillMaxWidth(),
-                supportingText = { 
+                supportingText = {
                     Text(
                         "CCI가 이 값을 벗어나야 신호 감지 조건 시작",
                         fontSize = 12.sp,
@@ -395,9 +450,9 @@ private fun CciIndicatorSettingsCard(
                 label = { Text("CCI 진입값") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 modifier = Modifier.fillMaxWidth(),
-                supportingText = { 
+                supportingText = {
                     Text(
-                        "돌파 후 이 값 안으로 들어오면 신호 발생",
+                        "CCI가 이 값 안으로 들어오면 신호 발생",
                         fontSize = 12.sp,
                         color = Color(0xFF666666)
                     )
@@ -407,153 +462,29 @@ private fun CciIndicatorSettingsCard(
     }
 }
 
-@Composable
-private fun ActiveSettingCard(
-    isActive: Boolean,
-    onActiveChange: (Boolean) -> Unit
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = if (isActive) Color(0xFFE8F5E8) else Color(0xFFFFF3E0)
-        )
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column {
-                Text(
-                    "시세포착 활성화",
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = if (isActive) Color(0xFF2E7D32) else Color(0xFFE65100)
-                )
-                Text(
-                    if (isActive) "설정된 조건에 따라 실시간 모니터링" else "시세포착이 비활성화됨",
-                    fontSize = 12.sp,
-                    color = Color(0xFF666666)
-                )
-            }
-            
-            Switch(
-                checked = isActive,
-                onCheckedChange = onActiveChange,
-                colors = SwitchDefaults.colors(
-                    checkedThumbColor = Color(0xFF4CAF50),
-                    checkedTrackColor = Color(0xFF4CAF50).copy(alpha = 0.5f)
-                )
-            )
-        }
-    }
-}
-
-@Composable
-private fun SaveButton(
-    isSaving: Boolean,
-    onClick: () -> Unit
-) {
-    Button(
-        onClick = onClick,
-        enabled = !isSaving,
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(56.dp),
-        colors = ButtonDefaults.buttonColors(
-            containerColor = Color(0xFF2196F3)
-        )
-    ) {
-        if (isSaving) {
-            CircularProgressIndicator(
-                color = Color.White,
-                modifier = Modifier.size(20.dp)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-        }
-        Text(
-            if (isSaving) "저장 중..." else "설정 저장",
-            fontSize = 16.sp,
-            fontWeight = FontWeight.Bold
-        )
-    }
-}
-
-@Composable
-private fun SymbolSelectionDialog(
-    symbols: List<String>,
-    selectedSymbol: String,
-    onSymbolSelected: (String) -> Unit,
-    onDismiss: () -> Unit
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Text("코인 선택")
-        },
-        text = {
-            Column {
-                symbols.chunked(2).forEach { rowSymbols ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        rowSymbols.forEach { symbol ->
-                            FilterChip(
-                                onClick = { onSymbolSelected(symbol) },
-                                label = { 
-                                    Text(
-                                        symbol.replace("USDT", ""),
-                                        fontSize = 12.sp
-                                    )
-                                },
-                                selected = selectedSymbol == symbol,
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
-                        
-                        // 홀수 개수일 때 빈 공간 채우기
-                        if (rowSymbols.size == 1) {
-                            Spacer(modifier = Modifier.weight(1f))
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(8.dp))
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text("닫기")
-            }
-        }
-    )
-}
-
-// 입력값 검증 함수
+// 검증 함수 (분 단위 검증)
 private fun validateInputs(
-    checkInterval: String,
-    cciPeriod: String,
-    cciBreakoutValue: String,
-    cciEntryValue: String,
-    seedMoney: String,
-    context: android.content.Context
+    context: android.content.Context,
+    interval: String,
+    period: String,
+    breakout: String,
+    entry: String,
+    seed: String
 ): Boolean {
     try {
-        val intervalInt = checkInterval.toInt()
-        val periodInt = cciPeriod.toInt()
-        val breakoutDouble = cciBreakoutValue.toDouble()
-        val entryDouble = cciEntryValue.toDouble()
-        val seedDouble = seedMoney.toDouble()
+        val intervalInt = interval.toInt()
+        val periodInt = period.toInt()
+        val breakoutDouble = breakout.toDouble()
+        val entryDouble = entry.toDouble()
+        val seedDouble = seed.toDouble()
 
         when {
-            intervalInt < 10 -> {
-                Toast.makeText(context, "진입체크 인터벌은 10초 이상이어야 합니다.", Toast.LENGTH_SHORT).show()
+            intervalInt < 15 -> {
+                Toast.makeText(context, "진입체크 인터벌은 15분 이상이어야 합니다.", Toast.LENGTH_SHORT).show()
                 return false
             }
-            intervalInt > 3600 -> {
-                Toast.makeText(context, "진입체크 인터벌은 1시간(3600초) 이하여야 합니다.", Toast.LENGTH_SHORT).show()
+            intervalInt > 1440 -> {
+                Toast.makeText(context, "진입체크 인터벌은 24시간(1440분) 이하여야 합니다.", Toast.LENGTH_SHORT).show()
                 return false
             }
             periodInt < 5 -> {
@@ -585,11 +516,49 @@ private fun validateInputs(
                 return false
             }
         }
-        
+
         return true
-        
+
     } catch (e: NumberFormatException) {
         Toast.makeText(context, "올바른 숫자를 입력해주세요.", Toast.LENGTH_SHORT).show()
         return false
     }
+}
+
+@Composable
+private fun SymbolSelectionDialog(
+    symbols: List<String>,
+    selectedSymbol: String,
+    onSymbolSelected: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("코인 선택") },
+        text = {
+            LazyColumn {
+                items(symbols) { symbol ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onSymbolSelected(symbol) }
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = symbol == selectedSymbol,
+                            onClick = { onSymbolSelected(symbol) }
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(symbol)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("취소")
+            }
+        }
+    )
 }
