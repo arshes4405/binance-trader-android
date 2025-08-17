@@ -1,4 +1,4 @@
-// MainActivity.kt - 백테스팅 탭 추가
+// MainActivity.kt - 시세포착 탭 추가 (기존 파일 업데이트)
 
 package com.example.ver20.view
 
@@ -47,11 +47,11 @@ fun BinanceTraderApp() {
     var showSecuritySettings by remember { mutableStateOf(false) }
 
     val tabs = listOf(
-        TabItem("가격조회", Icons.Default.Search),
+        TabItem("시세조회", Icons.Default.Search),
+        TabItem("시세포착", Icons.Default.Notifications), // 새로 추가
         TabItem("계좌조회", Icons.Default.AccountBox),
-        TabItem("백테스팅", Icons.Default.Analytics), // 새로 추가
-        TabItem("시세분석", Icons.Default.Info),
-        TabItem("거래내역", Icons.Default.List)
+        TabItem("백테스팅", Icons.Default.Analytics),
+        TabItem("시세분석", Icons.Default.Info)
     )
 
     when {
@@ -87,6 +87,10 @@ fun BinanceTraderApp() {
                 onCreateAccountClick = {
                     showUserInfo = false
                     showCreateAccount = true
+                },
+                onSecuritySettingsClick = {
+                    showUserInfo = false
+                    showSecuritySettings = true
                 }
             )
         }
@@ -100,29 +104,20 @@ fun BinanceTraderApp() {
                 topBar = {
                     TopAppBar(
                         title = {
-                            Box(
-                                modifier = Modifier.fillMaxWidth(),
-                                contentAlignment = Alignment.Center
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.offset(x = (-25).dp)
-                                ) {
+                                Icon(
+                                    Icons.Default.TrendingUp,
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(28.dp)
+                                )
+                                Box(modifier = Modifier.offset(x = 8.dp)) {
                                     Text(
-                                        "Binance ",
+                                        "바이낸스 트레이더",
+                                        fontSize = 18.sp,
                                         fontWeight = FontWeight.Bold,
-                                        fontSize = 20.sp,
-                                        color = Color.White
-                                    )
-                                    Text(
-                                        "⚡",
-                                        fontSize = 20.sp,
-                                        color = Color(0xFFFFD700)
-                                    )
-                                    Text(
-                                        " Trader",
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 20.sp,
                                         color = Color.White
                                     )
                                 }
@@ -149,7 +144,7 @@ fun BinanceTraderApp() {
                 bottomBar = {
                     NavigationBar(
                         containerColor = Color(0xFF2196F3),
-                        modifier = Modifier.height(110.dp) // 높이를 60dp로 제한
+                        modifier = Modifier.height(110.dp)
                     ) {
                         tabs.forEachIndexed { index, tab ->
                             NavigationBarItem(
@@ -157,13 +152,13 @@ fun BinanceTraderApp() {
                                     Icon(
                                         tab.icon,
                                         contentDescription = tab.title,
-                                        modifier = Modifier.size(20.dp) // 아이콘 크기를 줄임
+                                        modifier = Modifier.size(20.dp)
                                     )
                                 },
                                 label = {
                                     Text(
                                         tab.title,
-                                        fontSize = 11.sp // 폰트 크기를 줄임
+                                        fontSize = 11.sp
                                     )
                                 },
                                 selected = selectedTab == index,
@@ -185,13 +180,13 @@ fun BinanceTraderApp() {
                         modifier = Modifier.padding(paddingValues),
                         onShowCreateAccount = { showCreateAccount = true }
                     )
-                    1 -> AccountBalanceScreen(
+                    1 -> MarketSignalScreen(modifier = Modifier.padding(paddingValues)) // 새로 추가
+                    2 -> AccountBalanceScreen(
                         modifier = Modifier.padding(paddingValues),
                         onShowSecuritySettings = { showSecuritySettings = true }
                     )
-                    2 -> BacktestingScreen(modifier = Modifier.padding(paddingValues)) // 새로 추가
-                    3 -> AnalysisScreen(modifier = Modifier.padding(paddingValues))
-                   // 4 -> TradeHistoryScreen(modifier = Modifier.padding(paddingValues))
+                    3 -> BacktestingScreen(modifier = Modifier.padding(paddingValues))
+                    4 -> AnalysisScreen(modifier = Modifier.padding(paddingValues))
                 }
             }
         }

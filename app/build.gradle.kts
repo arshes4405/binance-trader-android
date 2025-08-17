@@ -103,4 +103,10 @@ dependencies {
     // 디버그 dependencies
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
+
+    // WorkManager for background tasks
+    implementation("androidx.work:work-runtime-ktx:2.8.1")
+
+    // 알림 관련
+    implementation("androidx.core:core-ktx:1.12.0")
 }
