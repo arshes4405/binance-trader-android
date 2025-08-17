@@ -79,6 +79,41 @@ interface MarketSignalApi {
         @Query("username") username: String,
         @Query("limit") limit: Int = 50
     ): Call<MarketSignalApiResponse>
+
+    // 돌파 상태 저장
+    @GET("api")
+    fun saveBreakoutState(
+        @Query("action") action: String = "saveBreakoutState",
+        @Query("configId") configId: String,
+        @Query("username") username: String,
+        @Query("symbol") symbol: String,
+        @Query("currentState") currentState: String,
+        @Query("lastCciValue") lastCciValue: Double,
+        @Query("breakoutValue") breakoutValue: Double,
+        @Query("entryValue") entryValue: Double
+    ): Call<MarketSignalApiResponse>
+
+    // 돌파 상태 조회
+    @GET("api")
+    fun getBreakoutState(
+        @Query("action") action: String = "getBreakoutState",
+        @Query("configId") configId: String
+    ): Call<MarketSignalApiResponse>
+
+    // 모든 돌파 상태 조회
+    @GET("api")
+    fun getAllBreakoutStates(
+        @Query("action") action: String = "getAllBreakoutStates",
+        @Query("username") username: String
+    ): Call<MarketSignalApiResponse>
+
+    // 돌파 상태 삭제
+    @GET("api")
+    fun deleteBreakoutState(
+        @Query("action") action: String = "deleteBreakoutState",
+        @Query("configId") configId: String
+    ): Call<MarketSignalApiResponse>
+
 }
 
 class MarketSignalService {
