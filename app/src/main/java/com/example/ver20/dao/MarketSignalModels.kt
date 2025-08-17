@@ -114,3 +114,12 @@ data class MarketSignalRequest(
     val reason: String,
     val timeframe: String
 )
+
+data class StateBasedSignalResult(
+    val hasSignal: Boolean,
+    val direction: String? = null,
+    val reason: String = "",
+    val price: Double = 0.0,
+    val volume: Double = 0.0,
+    val isDuplicate: Boolean = false
+)

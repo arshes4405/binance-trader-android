@@ -18,6 +18,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ver20.dao.*
@@ -174,7 +175,13 @@ private fun MainSignalScreen(
 
         // 활성 설정 요약
         item {
-            ActiveConfigsCard(signalConfigs)
+            ActiveConfigsCard(
+                signalConfigs = signalConfigs,
+                onConfigToggle = { config, isActive ->
+                    // TODO: 설정 활성화/비활성화 처리
+                    // 향후 API로 설정 상태 업데이트
+                }
+            )
         }
 
         // 최근 시세포착 신호 제목
@@ -382,7 +389,10 @@ private fun SignalTypeButton(
 }
 
 @Composable
-private fun ActiveConfigsCard(signalConfigs: List<MarketSignalConfig>) {
+private fun ActiveConfigsCard(
+    signalConfigs: List<MarketSignalConfig>,
+    onConfigToggle: ((MarketSignalConfig, Boolean) -> Unit)? = null
+) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
@@ -408,46 +418,243 @@ private fun ActiveConfigsCard(signalConfigs: List<MarketSignalConfig>) {
                     fontWeight = FontWeight.Bold,
                     color = Color(0xFF9C27B0)
                 )
+                Spacer(modifier = Modifier.weight(1f))
+                Text(
+                    "${signalConfigs.size}개",
+                    fontSize = 14.sp,
+                    color = Color(0xFF9C27B0),
+                    fontWeight = FontWeight.Medium
+                )
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
             if (signalConfigs.isEmpty()) {
-                Text(
-                    "활성화된 시세포착 설정이 없습니다.",
-                    fontSize = 14.sp,
-                    color = Color(0xFF666666),
-                    modifier = Modifier.padding(vertical = 8.dp)
-                )
-            } else {
-                signalConfigs.take(3).forEach { config ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 4.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            "${config.signalType} - ${config.symbol}",
-                            fontSize = 14.sp,
-                            color = Color(0xFF424242)
-                        )
-                        Text(
-                            config.timeframe,
-                            fontSize = 12.sp,
-                            color = Color(0xFF666666)
-                        )
-                    }
-                }
-
-                if (signalConfigs.size > 3) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 20.dp),
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Icon(
+                        Icons.Default.Info,
+                        contentDescription = null,
+                        tint = Color(0xFF9E9E9E),
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        "외 ${signalConfigs.size - 3}개 더...",
-                        fontSize = 12.sp,
+                        "활성화된 시세포착 설정이 없습니다.\n위에서 새로운 설정을 추가해보세요.",
+                        fontSize = 14.sp,
                         color = Color(0xFF666666),
-                        modifier = Modifier.padding(top = 4.dp)
+                        textAlign = TextAlign.Center
                     )
                 }
+            } else {
+                // 테이블 헤더
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(
+                            Color(0xFFE1BEE7),
+                            shape = RoundedCornerShape(8.dp)
+                        )
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "종류",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF4A148C),
+                        modifier = Modifier.weight(0.8f)
+                    )
+                    Text(
+                        "종목",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF4A148C),
+                        modifier = Modifier.weight(1f)
+                    )
+                    Text(
+                        "조건",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF4A148C),
+                        modifier = Modifier.weight(1.5f),
+                        textAlign = TextAlign.Center
+                    )
+                    Text(
+                        "인터벌",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF4A148C),
+                        modifier = Modifier.weight(0.8f),
+                        textAlign = TextAlign.Center
+                    )
+                    Text(
+                        "시드",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF4A148C),
+                        modifier = Modifier.weight(0.8f),
+                        textAlign = TextAlign.Center
+                    )
+                    Box(modifier = Modifier.weight(0.6f))
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // 설정 목록
+                signalConfigs.forEach { config ->
+                    ConfigRow(
+                        config = config,
+                        onToggle = onConfigToggle
+                    )
+
+                    if (config != signalConfigs.last()) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ConfigRow(
+    config: MarketSignalConfig,
+    onToggle: ((MarketSignalConfig, Boolean) -> Unit)?
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(
+                if (config.isActive) Color.White else Color(0xFFF5F5F5),
+                shape = RoundedCornerShape(6.dp)
+            )
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // 종류
+        Box(
+            modifier = Modifier.weight(0.8f)
+        ) {
+            Text(
+                config.signalType,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold,
+                color = when (config.signalType) {
+                    "CCI" -> Color(0xFF2196F3)
+                    "RSI" -> Color(0xFF4CAF50)
+                    "MA" -> Color(0xFFFF9800)
+                    else -> Color(0xFF666666)
+                }
+            )
+        }
+
+        // 종목 (심볼에서 USDT 제거)
+        Box(
+            modifier = Modifier.weight(1f)
+        ) {
+            val displaySymbol = config.symbol.replace("USDT", "")
+            Text(
+                when (displaySymbol) {
+                    "BTC" -> "비트코인"
+                    "ETH" -> "이더리움"
+                    "BNB" -> "바이낸스"
+                    "XRP" -> "리플"
+                    "ADA" -> "에이다"
+                    "DOGE" -> "도지코인"
+                    "SOL" -> "솔라나"
+                    "DOT" -> "폴카닷"
+                    "MATIC" -> "폴리곤"
+                    "LTC" -> "라이트코인"
+                    else -> displaySymbol
+                },
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+                color = Color(0xFF424242)
+            )
+        }
+
+        // 조건 (돌파 - 진입 + 시간대)
+        Box(
+            modifier = Modifier.weight(1.5f),
+            contentAlignment = Alignment.Center
+        ) {
+            if (config.signalType == "CCI") {
+                val timeframeDisplay = when (config.timeframe) {
+                    "15m" -> "15분"
+                    "1h" -> "1시간"
+                    "4h" -> "4시간"
+                    "1d" -> "1일"
+                    else -> config.timeframe
+                }
+                Text(
+                    "${config.cciBreakoutValue.toInt()} - ${config.cciEntryValue.toInt()} ($timeframeDisplay)",
+                    fontSize = 11.sp,
+                    color = Color(0xFF666666),
+                    textAlign = TextAlign.Center
+                )
+            } else {
+                Text(
+                    "-",
+                    fontSize = 11.sp,
+                    color = Color(0xFF999999),
+                    textAlign = TextAlign.Center
+                )
+            }
+        }
+
+        // 인터벌
+        Box(
+            modifier = Modifier.weight(0.8f),
+            contentAlignment = Alignment.Center
+        ) {
+            val intervalMinutes = config.checkInterval / 60  // ← 이 부분이 문제!
+            Text(
+                "${intervalMinutes}분",
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+                color = Color(0xFF666666),
+                textAlign = TextAlign.Center
+            )
+        }
+
+        // 시드
+        Box(
+            modifier = Modifier.weight(0.8f),
+            contentAlignment = Alignment.Center
+        ) {
+            val decimalFormat = DecimalFormat("#,###")
+            Text(
+                "$${decimalFormat.format(config.seedMoney.toInt())}",
+                fontSize = 11.sp,
+                color = Color(0xFF666666),
+                textAlign = TextAlign.Center
+            )
+        }
+
+        // 활성화/비활성화 스위치
+        Box(
+            modifier = Modifier.weight(0.6f),
+            contentAlignment = Alignment.Center
+        ) {
+            IconButton(
+                onClick = {
+                    onToggle?.invoke(config, !config.isActive)
+                },
+                modifier = Modifier.size(24.dp)
+            ) {
+                Icon(
+                    if (config.isActive) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
+                    contentDescription = if (config.isActive) "활성화됨" else "비활성화됨",
+                    tint = if (config.isActive) Color(0xFF4CAF50) else Color(0xFF9E9E9E),
+                    modifier = Modifier.size(20.dp)
+                )
             }
         }
     }
