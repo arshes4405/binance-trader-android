@@ -9,6 +9,7 @@ import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.math.*
 
+
 class RealCciStrategyEngine {
     companion object {
         private const val TAG = "RealCciStrategyEngine"
@@ -218,8 +219,17 @@ class RealCciStrategyEngine {
         position.totalCoins += coins
         position.averagePrice = position.totalAmount / position.totalCoins
 
+        // 거래 타입 설정 (숏과 롱 구분)
+        val tradeType = if (position.type == "LONG") {
+            "STAGE${stage}_BUY"
+        } else {
+            "STAGE${stage}_SHORT_SELL" // 숏은 매도로 시작
+        }
+
+        Log.d(TAG, "${position.type} 진입 - 단계: $stage, 가격: $price, 금액: $amount, 평균단가: ${position.averagePrice}")
+
         return CciTradeExecution(
-            type = "STAGE${stage}_BUY",
+            type = tradeType,
             stage = stage,
             entryPrice = price,
             amount = amount,
@@ -333,17 +343,24 @@ class RealCciStrategyEngine {
 
         val actions = mutableListOf<CciTradeExecution>()
         val averagePrice = position.averagePrice
+
+        // 숏의 수익률 계산 수정: (진입가 - 현재가) / 진입가 * 100
         val profitRate = (averagePrice - currentPrice) / averagePrice * 100
+        val lossRate = (currentPrice - averagePrice) / averagePrice * 100
+
+        Log.d(TAG, "숏 포지션 관리 - 진입가: $averagePrice, 현재가: $currentPrice, 수익률: $profitRate%, 손실률: $lossRate%")
 
         // 숏은 단순 손익절만
         if (profitRate >= settings.profitTarget) {
-            // 익절
+            // 익절: 가격이 하락하여 수익
             val exitAction = createExitAction(position, currentPrice, timestamp, currentCCI, "PROFIT_EXIT", settings)
             actions.add(exitAction)
-        } else if (profitRate <= -settings.stopLossPercent) {
-            // 손절
+            Log.d(TAG, "숏 익절 실행: 수익률 $profitRate%")
+        } else if (lossRate >= settings.stopLossPercent) {
+            // 손절: 가격이 상승하여 손실
             val stopLossAction = createExitAction(position, currentPrice, timestamp, currentCCI, "STOP_LOSS", settings)
             actions.add(stopLossAction)
+            Log.d(TAG, "숏 손절 실행: 손실률 $lossRate%")
         }
 
         return actions
@@ -362,18 +379,33 @@ class RealCciStrategyEngine {
         val totalCoins = position.totalCoins
         val exitAmount = totalCoins * exitPrice
         val fee = exitAmount * settings.feeRate / 100
+
+        // 수익률 계산 수정
         val profitRate = if (position.type == "LONG") {
+            // 롱: (매도가 - 매수가) / 매수가 * 100
             (exitPrice - position.averagePrice) / position.averagePrice * 100
         } else {
+            // 숏: (매수가 - 매도가) / 매수가 * 100 (숏은 높은 가격에 매도 후 낮은 가격에 매수)
             (position.averagePrice - exitPrice) / position.averagePrice * 100
         }
+
+        // 실제 손익 계산 (수수료 포함)
+        val actualProfit = if (position.type == "LONG") {
+            // 롱: 매도금액 - 매수금액 - 수수료
+            exitAmount - position.totalAmount - fee
+        } else {
+            // 숏: 매수금액 - 매도금액 - 수수료 (숏은 반대)
+            position.totalAmount - exitAmount - fee
+        }
+
+        Log.d(TAG, "${position.type} 청산 - 진입가: ${position.averagePrice}, 청산가: $exitPrice, 수익률: $profitRate%, 실제손익: $actualProfit")
 
         return CciTradeExecution(
             type = exitType,
             stage = position.currentStage,
             entryPrice = position.averagePrice,
             exitPrice = exitPrice,
-            amount = exitAmount,
+            amount = if (position.type == "LONG") exitAmount else actualProfit + position.totalAmount, // 숏은 실제 수익 반영
             coins = totalCoins,
             fees = fee,
             timestamp = timestamp,
@@ -433,22 +465,48 @@ class RealCciStrategyEngine {
                     (trade.type.contains("STAGE") || trade.type in listOf("HALF_SELL", "PROFIT_EXIT", "STOP_LOSS"))
         }
 
-        val buyTrades = positionTrades.filter { it.type.contains("BUY") }
-        val sellTrades = positionTrades.filter { !it.type.contains("BUY") }
+        val buyTrades = positionTrades.filter {
+            if (position.type == "LONG") {
+                it.type.contains("BUY")
+            } else {
+                // 숏의 경우: 최종 청산이 "매수"가 됨
+                it.type in listOf("PROFIT_EXIT", "STOP_LOSS", "COMPLETE_EXIT")
+            }
+        }
+        val sellTrades = positionTrades.filter {
+            if (position.type == "LONG") {
+                !it.type.contains("BUY")
+            } else {
+                // 숏의 경우: 진입이 "매도"가 됨
+                it.type.contains("SHORT_SELL") || it.type.contains("STAGE")
+            }
+        }
 
-        val totalProfit = sellTrades.sumOf { it.amount } - buyTrades.sumOf { it.amount }
+        // 손익 계산 수정
+        val totalProfit = if (position.type == "LONG") {
+            // 롱: 매도금액 - 매수금액
+            sellTrades.sumOf { it.amount } - buyTrades.sumOf { it.amount }
+        } else {
+            // 숏: 매수금액 - 매도금액 (숏은 높은 가격에서 매도 시작, 낮은 가격에서 매수 종료)
+            buyTrades.sumOf { it.amount } - sellTrades.sumOf { it.amount }
+        }
+
         val totalFees = positionTrades.sumOf { it.fees }
 
         val startTime = formatTimestamp(position.timestamp)
         val endTime = formatTimestamp(sellTrades.lastOrNull()?.timestamp ?: position.timestamp)
         val duration = calculateDuration(position.timestamp, sellTrades.lastOrNull()?.timestamp ?: position.timestamp)
 
+        val finalProfit = totalProfit - totalFees
+
+        Log.d(TAG, "포지션 결과 생성 - ${position.type} #$positionId: 총손익=$totalProfit, 수수료=$totalFees, 최종손익=$finalProfit")
+
         return CciPositionResult(
             positionId = positionId,
             type = position.type,
             symbol = "BTCUSDT", // 실제로는 설정에서 가져와야 함
             maxStage = position.currentStage,
-            totalProfit = totalProfit - totalFees,
+            totalProfit = finalProfit,
             totalFees = totalFees,
             finalResult = sellTrades.lastOrNull()?.type ?: "INCOMPLETE",
             startTime = startTime,
