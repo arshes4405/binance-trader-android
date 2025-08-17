@@ -79,6 +79,7 @@
                                             <option name="values">
                                               <map>
                                                 <entry key="color" value="000000" />
+                                                <entry key="imagePath" value="C:\Users\csyun\Downloads\ic_launcher_192x192.webp" />
                                               </map>
                                             </option>
                                           </PersistentState>
