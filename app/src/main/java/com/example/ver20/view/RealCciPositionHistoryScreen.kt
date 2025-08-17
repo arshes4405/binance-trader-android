@@ -373,6 +373,183 @@ fun FilterChip(
     }
 }
 
+
+// 숏 매도(진입) 상세 카드
+@Composable
+fun CciShortSellDetailCard(sell: CciTradeExecution, formatter: DecimalFormat) {
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = Color(0xFFFFEBEE)
+        ),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // 매도 진입 아이콘
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .background(
+                        color = Color(0xFFF44336),
+                        shape = CircleShape
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Default.TrendingDown,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            Column(
+                modifier = Modifier.weight(1f)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        "🔴 숏 매도 진입",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFFF44336)
+                    )
+                    Text(
+                        formatTimestamp(sell.timestamp),
+                        fontSize = 10.sp,
+                        color = Color(0xFF666666)
+                    )
+                }
+
+                Text(
+                    "가격: ${formatter.format(sell.entryPrice)} | 금액: ${formatter.format(sell.amount)}",
+                    fontSize = 11.sp,
+                    color = Color(0xFF424242)
+                )
+
+                Text(
+                    "코인: ${DecimalFormat("#,##0.######").format(sell.coins)} | 수수료: ${formatter.format(sell.fees)}",
+                    fontSize = 11.sp,
+                    color = Color(0xFF666666)
+                )
+
+                Text(
+                    "이유: ${sell.reason}",
+                    fontSize = 10.sp,
+                    color = Color(0xFF666666)
+                )
+
+                Text(
+                    "진입CCI: ${DecimalFormat("#,##0.0").format(sell.entryCCI)}",
+                    fontSize = 10.sp,
+                    color = Color(0xFFF44336),
+                    fontWeight = FontWeight.Medium
+                )
+            }
+        }
+    }
+}
+
+// 숏 매수(청산) 상세 카드
+@Composable
+fun CciShortBuyDetailCard(buy: CciTradeExecution, formatter: DecimalFormat) {
+    val profitColor = if (buy.profitRate >= 0) Color(0xFF4CAF50) else Color(0xFFF44336)
+
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = if (buy.profitRate >= 0) Color(0xFFE8F5E8) else Color(0xFFFFEBEE)
+        ),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // 청산 아이콘
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .background(
+                        color = profitColor,
+                        shape = CircleShape
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    if (buy.type.contains("PROFIT")) Icons.Default.TrendingUp else Icons.Default.Close,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            Column(
+                modifier = Modifier.weight(1f)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        "🟢 ${getShortExitTypeText(buy.type)}",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = profitColor
+                    )
+                    Text(
+                        formatTimestamp(buy.timestamp),
+                        fontSize = 10.sp,
+                        color = Color(0xFF666666)
+                    )
+                }
+
+                Text(
+                    "가격: ${formatter.format(buy.exitPrice ?: 0.0)} | 금액: ${formatter.format(buy.amount)}",
+                    fontSize = 11.sp,
+                    color = Color(0xFF424242)
+                )
+
+                Text(
+                    "코인: ${DecimalFormat("#,##0.######").format(buy.coins)} | 수수료: ${formatter.format(buy.fees)}",
+                    fontSize = 11.sp,
+                    color = Color(0xFF666666)
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        "수익률: ${if (buy.profitRate >= 0) "+" else ""}${formatter.format(buy.profitRate)}%",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = profitColor
+                    )
+                    Text(
+                        "CCI: ${DecimalFormat("#,##0.0").format(buy.exitCCI)}",
+                        fontSize = 10.sp,
+                        color = Color(0xFF666666)
+                    )
+                }
+
+                Text(
+                    "이유: ${buy.reason}",
+                    fontSize = 10.sp,
+                    color = Color(0xFF666666)
+                )
+            }
+        }
+    }
+}
+
 @Composable
 fun RealCciPositionCard(
     position: CciPositionResult,
@@ -412,7 +589,7 @@ fun RealCciPositionCard(
                     Spacer(modifier = Modifier.width(8.dp))
                     Column {
                         Text(
-                            "${position.symbol} ${position.type} #${position.positionId}",
+                            "${position.symbol.replace("USDT", "")} ${position.type} #${position.positionId}",
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFF424242)
@@ -451,7 +628,7 @@ fun RealCciPositionCard(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // 기본 정보
+            // 기본 정보 - 포지션 타입에 따라 다르게 표시
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
@@ -461,11 +638,19 @@ fun RealCciPositionCard(
                     fontSize = 12.sp,
                     color = getResultColor(position.finalResult)
                 )
-                Text(
-                    "거래: ${position.buyTrades.size}매수 ${position.sellTrades.size}매도",
-                    fontSize = 12.sp,
-                    color = Color(0xFF666666)
-                )
+                if (position.type == "LONG") {
+                    Text(
+                        "거래: ${position.buyTrades.size}매수 ${position.sellTrades.size}매도",
+                        fontSize = 12.sp,
+                        color = Color(0xFF666666)
+                    )
+                } else {
+                    Text(
+                        "거래: 1매도 1매수",
+                        fontSize = 12.sp,
+                        color = Color(0xFF666666)
+                    )
+                }
             }
 
             Text(
@@ -478,39 +663,75 @@ fun RealCciPositionCard(
             if (isExpanded) {
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // 🔵 매수 거래 내역
-                if (position.buyTrades.isNotEmpty()) {
-                    Text(
-                        "🔵 매수 거래 기록 (${position.buyTrades.size}건)",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF2196F3)
-                    )
+                if (position.type == "LONG") {
+                    // 롱의 경우: 매수 → 매도 순서
+                    if (position.buyTrades.isNotEmpty()) {
+                        Text(
+                            "🔵 매수 거래 기록 (${position.buyTrades.size}건)",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF2196F3)
+                        )
 
-                    Spacer(modifier = Modifier.height(8.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
 
-                    position.buyTrades.forEach { buy ->
-                        CciBuyTradeDetailCard(buy, formatter)
-                        Spacer(modifier = Modifier.height(6.dp))
+                        position.buyTrades.forEach { buy ->
+                            CciBuyTradeDetailCard(buy, formatter)
+                            Spacer(modifier = Modifier.height(6.dp))
+                        }
                     }
-                }
 
-                // 🟢 매도 거래 내역
-                if (position.sellTrades.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(12.dp))
+                    if (position.sellTrades.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(12.dp))
 
-                    Text(
-                        "🟢 매도 거래 기록 (${position.sellTrades.size}건)",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF4CAF50)
-                    )
+                        Text(
+                            "🟢 매도 거래 기록 (${position.sellTrades.size}건)",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF4CAF50)
+                        )
 
-                    Spacer(modifier = Modifier.height(8.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
 
-                    position.sellTrades.forEach { sell ->
-                        CciSellTradeDetailCard(sell, formatter)
-                        Spacer(modifier = Modifier.height(6.dp))
+                        position.sellTrades.forEach { sell ->
+                            CciSellTradeDetailCard(sell, formatter)
+                            Spacer(modifier = Modifier.height(6.dp))
+                        }
+                    }
+                } else {
+                    // 숏의 경우: 매도(진입) → 매수(청산) 순서
+                    if (position.sellTrades.isNotEmpty()) {
+                        Text(
+                            "🔴 매도 거래 기록 (진입)",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFFF44336)
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        position.sellTrades.forEach { sell ->
+                            CciShortSellDetailCard(sell, formatter)
+                            Spacer(modifier = Modifier.height(6.dp))
+                        }
+                    }
+
+                    if (position.buyTrades.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        Text(
+                            "🟢 매수 거래 기록 (청산)",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF4CAF50)
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        position.buyTrades.forEach { buy ->
+                            CciShortBuyDetailCard(buy, formatter)
+                            Spacer(modifier = Modifier.height(6.dp))
+                        }
                     }
                 }
             }
@@ -775,6 +996,14 @@ fun getResultText(result: String): String {
         "FORCE_CLOSE" -> "강제 청산"
         "INCOMPLETE" -> "미완료"
         else -> result
+    }
+}
+
+fun getShortExitTypeText(type: String): String {
+    return when (type) {
+        "SHORT_PROFIT_EXIT" -> "숏 익절 청산"
+        "SHORT_STOP_LOSS" -> "숏 손절 청산"
+        else -> "숏 청산"
     }
 }
 

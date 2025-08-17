@@ -39,6 +39,7 @@ data class CciStrategySettings(
 )
 
 // 포지션 정보 (실제 물타기 방식으로 수정)
+// 포지션 정보 (실제 물타기 방식으로 수정)
 data class CciPosition(
     val type: String, // "LONG" or "SHORT"
     val stages: MutableList<CciPositionStage>,
@@ -48,7 +49,8 @@ data class CciPosition(
     var averagePrice: Double = 0.0,
     val timestamp: Long,
     val entryCCI: Double,
-    val previousCCI: Double
+    val previousCCI: Double,
+    val symbol: String = "TRADE" // 기본값 추가
 )
 
 data class CciPositionStage(

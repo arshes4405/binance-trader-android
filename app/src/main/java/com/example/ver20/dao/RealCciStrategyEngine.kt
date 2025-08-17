@@ -87,6 +87,8 @@ class RealCciStrategyEngine {
         return cciValues
     }
 
+
+
     // 실제 CCI 물타기 전략 실행
     private fun executeRealCciStrategy(
         priceData: List<PriceCandle>,
@@ -610,7 +612,7 @@ class RealCciStrategyEngine {
         return CciPositionResult(
             positionId = positionId,
             type = "SHORT",
-            symbol = "BTCUSDT",
+            symbol = position.symbol ?: "BTCUSDT",
             maxStage = 0,  // 숏은 물타기 없음
             totalProfit = totalProfit,
             totalFees = totalFees,
