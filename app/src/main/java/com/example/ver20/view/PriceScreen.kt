@@ -324,7 +324,8 @@ fun PriceScreen(
 
         // 코인 목록
         LazyColumn(
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            contentPadding = PaddingValues(bottom = 20.dp) // 하단 여백 대폭 증가
         ) {
             items(coinIndicators) { coin ->
                 CoinIndicatorCard(
@@ -396,7 +397,7 @@ fun CoinIndicatorCard(
             .fillMaxWidth()
             .clickable { onRefresh() },
         colors = CardDefaults.cardColors(
-            containerColor = Color.White
+            containerColor = Color(0xFFF0F4F8) // 연한 블루그레이
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
@@ -497,24 +498,93 @@ fun CoinIndicatorCard(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // 기술적 지표 칩들 (2줄 배치)
+            // 기술적 지표 테이블 형태
             Column(
-                verticalArrangement = Arrangement.spacedBy(6.dp)
+                verticalArrangement = Arrangement.spacedBy(2.dp)
             ) {
-                // 첫 번째 줄: 15분, 1시간
+                // 헤더 행
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    InlineTimeframeIndicators("15분", coin.min15)
-                    InlineTimeframeIndicators("1시간", coin.hour1)
+                    Text(
+                        "",
+                        fontSize = 12.sp,
+                        modifier = Modifier.weight(0.8f) // 빈 공간
+                    )
+                    Text(
+                        "15분",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF666666),
+                        modifier = Modifier.weight(1f),
+                        textAlign = TextAlign.Center
+                    )
+                    Text(
+                        "1시간",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF666666),
+                        modifier = Modifier.weight(1f),
+                        textAlign = TextAlign.Center
+                    )
+                    Text(
+                        "4시간",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF666666),
+                        modifier = Modifier.weight(1f),
+                        textAlign = TextAlign.Center
+                    )
+                    Text(
+                        "1일",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF666666),
+                        modifier = Modifier.weight(1f),
+                        textAlign = TextAlign.Center
+                    )
                 }
 
-                // 두 번째 줄: 4시간, 1일
+                // CCI 행
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    InlineTimeframeIndicators("4시간", coin.hour4)
-                    InlineTimeframeIndicators("1일", coin.day1)
+                    Text(
+                        "CCI",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF2196F3),
+                        modifier = Modifier.weight(0.8f),
+                        textAlign = TextAlign.Start
+                    )
+                    TableIndicatorCell(coin.min15?.cciValue, true, Modifier.weight(1f))
+                    TableIndicatorCell(coin.hour1?.cciValue, true, Modifier.weight(1f))
+                    TableIndicatorCell(coin.hour4?.cciValue, true, Modifier.weight(1f))
+                    TableIndicatorCell(coin.day1?.cciValue, true, Modifier.weight(1f))
+                }
+
+                // RSI 행
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "RSI",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF4CAF50),
+                        modifier = Modifier.weight(0.8f),
+                        textAlign = TextAlign.Start
+                    )
+                    TableIndicatorCell(coin.min15?.rsiValue, false, Modifier.weight(1f))
+                    TableIndicatorCell(coin.hour1?.rsiValue, false, Modifier.weight(1f))
+                    TableIndicatorCell(coin.hour4?.rsiValue, false, Modifier.weight(1f))
+                    TableIndicatorCell(coin.day1?.rsiValue, false, Modifier.weight(1f))
                 }
             }
         }
@@ -645,94 +715,67 @@ fun AddCoinDialog(
     )
 }
 
-// ===== 인라인 시간대별 지표 =====
+// ===== 테이블 형태의 지표 셀 =====
 
 @Composable
-fun InlineTimeframeIndicators(
-    timeframe: String,
-    data: TechnicalIndicatorData?
+fun TableIndicatorCell(
+    value: Double?,
+    isCci: Boolean,
+    modifier: Modifier = Modifier
 ) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(2.dp)
+    Box(
+        modifier = modifier,
+        contentAlignment = Alignment.Center
     ) {
-        // 시간대 라벨
-        Text(
-            timeframe,
-            fontSize = 11.sp,
-            fontWeight = FontWeight.Bold,
-            color = Color(0xFF666666)
-        )
+        if (value != null) {
+            val (bgColor, textColor) = if (isCci) {
+                when {
+                    value > 100 -> Pair(Color(0xFFFFEBEE), Color(0xFFD32F2F))
+                    value < -100 -> Pair(Color(0xFFE8F5E8), Color(0xFF388E3C))
+                    else -> Pair(Color(0xFFF5F5F5), Color(0xFF666666))
+                }
+            } else { // RSI
+                when {
+                    value > 70 -> Pair(Color(0xFFFFEBEE), Color(0xFFD32F2F))
+                    value < 30 -> Pair(Color(0xFFE8F5E8), Color(0xFF388E3C))
+                    else -> Pair(Color(0xFFF5F5F5), Color(0xFF666666))
+                }
+            }
 
-        if (data != null) {
-            // CCI 칩
-            InlineIndicatorChip(
-                value = data.cciValue,
-                isCci = true
-            )
-
-            // RSI 칩
-            InlineIndicatorChip(
-                value = data.rsiValue,
-                isCci = false
-            )
+            Box(
+                modifier = Modifier
+                    .background(
+                        bgColor,
+                        shape = RoundedCornerShape(8.dp)
+                    )
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    String.format("%.0f", value),
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = textColor
+                )
+            }
         } else {
             // 로딩 중
             Box(
                 modifier = Modifier
                     .background(
                         Color(0xFFE0E0E0),
-                        shape = RoundedCornerShape(6.dp)
+                        shape = RoundedCornerShape(8.dp)
                     )
-                    .padding(horizontal = 6.dp, vertical = 2.dp),
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
                     "...",
-                    fontSize = 8.sp,
+                    fontSize = 12.sp,
                     color = Color(0xFF9E9E9E)
                 )
             }
         }
-    }
-}
-
-// ===== 인라인 지표 칩 (더 작음) =====
-
-@Composable
-fun InlineIndicatorChip(
-    value: Double,
-    isCci: Boolean
-) {
-    val (bgColor, textColor) = if (isCci) {
-        when {
-            value > 100 -> Pair(Color(0xFFFFCDD2), Color(0xFFD32F2F))
-            value < -100 -> Pair(Color(0xFFC8E6C9), Color(0xFF388E3C))
-            else -> Pair(Color(0xFFE0E0E0), Color(0xFF424242))
-        }
-    } else { // RSI
-        when {
-            value > 70 -> Pair(Color(0xFFFFCDD2), Color(0xFFD32F2F))
-            value < 30 -> Pair(Color(0xFFC8E6C9), Color(0xFF388E3C))
-            else -> Pair(Color(0xFFE0E0E0), Color(0xFF424242))
-        }
-    }
-
-    Box(
-        modifier = Modifier
-            .background(
-                bgColor,
-                shape = RoundedCornerShape(6.dp)
-            )
-            .padding(horizontal = 5.dp, vertical = 2.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            String.format("%.0f", value),
-            fontSize = 10.sp,
-            fontWeight = FontWeight.Bold,
-            color = textColor
-        )
     }
 }
 
