@@ -1,5 +1,3 @@
-// 업데이트된 시세 조회 화면 - HOME처럼 검은색 배경 적용
-
 package com.example.ver20.view.price
 
 import androidx.compose.foundation.background
@@ -196,7 +194,7 @@ fun PriceScreen(
                                 Text(
                                     "환영합니다, ${currentUser!!.username}님",
                                     fontSize = 12.sp,
-                                    color = Color(0xFFE3F2FD)
+                                    color = Color(0xFFC0C0C0)  // 실버색으로 변경
                                 )
                             }
                         }
@@ -255,21 +253,22 @@ fun PriceScreen(
                                         }
                                     },
                                     colors = ButtonDefaults.buttonColors(
-                                        containerColor = Color(0xFF2196F3)
+                                        containerColor = Color(0xFFC0C0C0)  // 실버색으로 변경
                                     ),
                                     modifier = Modifier.height(36.dp)
                                 ) {
                                     Icon(
                                         Icons.Default.Refresh,
                                         contentDescription = "새로고침",
-                                        tint = Color.White,
+                                        tint = Color.Black,
                                         modifier = Modifier.size(14.dp)
                                     )
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text(
                                         if (isRefreshing) "업데이트중" else "새로고침",
-                                        color = Color.White,
-                                        fontSize = 11.sp
+                                        color = Color.Black,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold
                                     )
                                 }
                             }
@@ -369,7 +368,7 @@ fun PriceScreen(
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold,
                                 textAlign = TextAlign.Center,
-                                color = Color(0xFF81C784)
+                                color = Color(0xFFFFD700)  // 골드색으로 변경
                             )
                             Text(
                                 "RSI",
@@ -377,7 +376,7 @@ fun PriceScreen(
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold,
                                 textAlign = TextAlign.Center,
-                                color = Color(0xFFFFB74D)
+                                color = Color(0xFFC0C0C0)  // 실버색으로 변경
                             )
                         }
 
@@ -390,16 +389,16 @@ fun PriceScreen(
                         ) {
                             Spacer(modifier = Modifier.weight(1.2f))
                             Row(modifier = Modifier.weight(2f)) {
-                                Text("15m", modifier = Modifier.weight(1f), fontSize = 12.sp, textAlign = TextAlign.Center, color = Color.White, fontWeight = FontWeight.Medium)
-                                Text("1h", modifier = Modifier.weight(1f), fontSize = 12.sp, textAlign = TextAlign.Center, color = Color.White, fontWeight = FontWeight.Medium)
-                                Text("4h", modifier = Modifier.weight(1f), fontSize = 12.sp, textAlign = TextAlign.Center, color = Color.White, fontWeight = FontWeight.Medium)
-                                Text("1d", modifier = Modifier.weight(1f), fontSize = 12.sp, textAlign = TextAlign.Center, color = Color.White, fontWeight = FontWeight.Medium)
+                                Text("15m", modifier = Modifier.weight(1f), fontSize = 12.sp, textAlign = TextAlign.Center, color = Color(0xFFFFD700), fontWeight = FontWeight.Medium)
+                                Text("1h", modifier = Modifier.weight(1f), fontSize = 12.sp, textAlign = TextAlign.Center, color = Color(0xFFFFD700), fontWeight = FontWeight.Medium)
+                                Text("4h", modifier = Modifier.weight(1f), fontSize = 12.sp, textAlign = TextAlign.Center, color = Color(0xFFFFD700), fontWeight = FontWeight.Medium)
+                                Text("1d", modifier = Modifier.weight(1f), fontSize = 12.sp, textAlign = TextAlign.Center, color = Color(0xFFFFD700), fontWeight = FontWeight.Medium)
                             }
                             Row(modifier = Modifier.weight(2f)) {
-                                Text("15m", modifier = Modifier.weight(1f), fontSize = 12.sp, textAlign = TextAlign.Center, color = Color.White, fontWeight = FontWeight.Medium)
-                                Text("1h", modifier = Modifier.weight(1f), fontSize = 12.sp, textAlign = TextAlign.Center, color = Color.White, fontWeight = FontWeight.Medium)
-                                Text("4h", modifier = Modifier.weight(1f), fontSize = 12.sp, textAlign = TextAlign.Center, color = Color.White, fontWeight = FontWeight.Medium)
-                                Text("1d", modifier = Modifier.weight(1f), fontSize = 12.sp, textAlign = TextAlign.Center, color = Color.White, fontWeight = FontWeight.Medium)
+                                Text("15m", modifier = Modifier.weight(1f), fontSize = 12.sp, textAlign = TextAlign.Center, color = Color(0xFFC0C0C0), fontWeight = FontWeight.Medium)
+                                Text("1h", modifier = Modifier.weight(1f), fontSize = 12.sp, textAlign = TextAlign.Center, color = Color(0xFFC0C0C0), fontWeight = FontWeight.Medium)
+                                Text("4h", modifier = Modifier.weight(1f), fontSize = 12.sp, textAlign = TextAlign.Center, color = Color(0xFFC0C0C0), fontWeight = FontWeight.Medium)
+                                Text("1d", modifier = Modifier.weight(1f), fontSize = 12.sp, textAlign = TextAlign.Center, color = Color(0xFFC0C0C0), fontWeight = FontWeight.Medium)
                             }
                         }
                     }
