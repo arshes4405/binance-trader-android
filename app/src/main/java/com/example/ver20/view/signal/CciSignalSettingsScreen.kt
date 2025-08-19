@@ -1,7 +1,8 @@
 // CciSignalSettingsScreen.kt - CCI 시세포착 설정 화면 (분 단위 인터벌)
 
-package com.example.ver20.view
+package com.example.ver20.view.signal
 
+import android.content.Context
 import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -22,7 +23,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.ver20.dao.*
+import com.example.ver20.dao.mongoDB.UserData
+import com.example.ver20.dao.mongoDB.UserService
+import com.example.ver20.dao.trading.signal.MarketSignalConfig
+import com.example.ver20.dao.trading.signal.MarketSignalService
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -464,7 +468,7 @@ private fun CciIndicatorSettingsCard(
 
 // 검증 함수 (분 단위 검증)
 private fun validateInputs(
-    context: android.content.Context,
+    context: Context,
     interval: String,
     period: String,
     breakout: String,

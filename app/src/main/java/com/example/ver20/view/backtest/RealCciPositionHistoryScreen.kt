@@ -1,6 +1,6 @@
 // RealCciPositionHistoryScreen.kt - 실제 CCI 포지션 내역 화면
 
-package com.example.ver20.view
+package com.example.ver20.view.backtest
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -16,16 +16,19 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import java.text.DecimalFormat
-import com.example.ver20.dao.RealCciBacktestResult
-import com.example.ver20.dao.CciPositionResult
-import com.example.ver20.dao.CciTradeExecution
+import com.example.ver20.dao.trading.backtest.RealCciBacktestResult
+import com.example.ver20.dao.trading.backtest.CciPositionResult
+import com.example.ver20.dao.trading.backtest.CciTradeExecution
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -119,7 +122,7 @@ fun RealCciPositionHistoryScreen(
 
 @Composable
 fun OverviewMetric(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    icon: ImageVector,
     label: String,
     value: String,
     color: Color
@@ -1017,6 +1020,6 @@ fun getResultColor(result: String): Color {
 }
 
 fun formatTimestamp(timestamp: Long): String {
-    val dateFormat = java.text.SimpleDateFormat("MM-dd HH:mm", java.util.Locale.getDefault())
-    return dateFormat.format(java.util.Date(timestamp))
+    val dateFormat = SimpleDateFormat("MM-dd HH:mm", Locale.getDefault())
+    return dateFormat.format(Date(timestamp))
 }

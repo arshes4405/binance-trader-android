@@ -1,17 +1,16 @@
 // RealDataBacktestEngine.kt 수정 - 기존 파일 업데이트
 
-package com.example.ver20.dao
+package com.example.ver20.dao.trading.backtest
 
 import android.util.Log
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.delay
+import retrofit2.Response
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.GET
 import retrofit2.http.Query
 import java.text.SimpleDateFormat
 import java.util.*
-import kotlin.math.*
 
 // ===========================================
 // 바이낸스 K-line API 인터페이스
@@ -25,7 +24,7 @@ interface BinanceKlineApi {
         @Query("limit") limit: Int = 1000,
         @Query("startTime") startTime: Long? = null,
         @Query("endTime") endTime: Long? = null
-    ): retrofit2.Response<List<List<Any>>>
+    ): Response<List<List<Any>>>
 }
 
 // ===========================================
@@ -186,7 +185,7 @@ class RealDataBacktestEngine {
                 }
 
                 // API 호출 간격 (Rate Limit 방지)
-                kotlinx.coroutines.delay(100)
+                delay(100)
             }
 
             if (allCandles.isEmpty()) {

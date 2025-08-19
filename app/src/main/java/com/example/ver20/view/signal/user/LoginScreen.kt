@@ -1,4 +1,4 @@
-package com.example.ver20.view.user
+package com.example.ver20.view.signal.user
 
 import android.widget.Toast
 import androidx.compose.foundation.layout.*
@@ -17,8 +17,8 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.ver20.dao.UserService
-import com.example.ver20.dao.UserData
+import com.example.ver20.dao.mongoDB.UserService
+import com.example.ver20.dao.mongoDB.UserData
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch

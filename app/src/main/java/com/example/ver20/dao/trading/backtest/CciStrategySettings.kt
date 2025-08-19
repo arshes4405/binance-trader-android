@@ -1,6 +1,6 @@
 // 수정된 CciStrategySettings.kt - 실제 전략에 맞게 업데이트
 
-package com.example.ver20.dao
+package com.example.ver20.dao.trading.backtest
 
 // 가격 캔들 데이터 클래스 (누락된 부분 추가)
 data class PriceCandle(

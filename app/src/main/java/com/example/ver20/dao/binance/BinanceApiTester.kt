@@ -1,8 +1,9 @@
 // BinanceApiTester.kt - 바이낸스 API 연결 테스트 전용
 
-package com.example.ver20.dao
+package com.example.ver20.dao.binance
 
 import android.util.Log
+import com.example.ver20.dao.dataclass.ApiKeyData
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.*

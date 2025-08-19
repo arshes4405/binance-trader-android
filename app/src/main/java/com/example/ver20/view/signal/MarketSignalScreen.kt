@@ -1,6 +1,6 @@
 // MarketSignalScreen.kt - 시세포착 메인 화면
 
-package com.example.ver20.view
+package com.example.ver20.view.signal
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -21,8 +21,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.ver20.dao.*
-import kotlinx.coroutines.launch
+import com.example.ver20.dao.mongoDB.UserData
+import com.example.ver20.dao.mongoDB.UserService
+import com.example.ver20.dao.trading.signal.MarketSignal
+import com.example.ver20.dao.trading.signal.MarketSignalConfig
+import com.example.ver20.dao.trading.signal.MarketSignalService
 import java.text.DecimalFormat
 
 @Composable

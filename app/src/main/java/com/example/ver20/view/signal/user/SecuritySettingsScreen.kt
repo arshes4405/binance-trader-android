@@ -1,4 +1,4 @@
-package com.example.ver20.view.user
+package com.example.ver20.view.signal.user
 
 import android.widget.Toast
 import androidx.compose.foundation.layout.*
@@ -18,8 +18,8 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.ver20.dao.ApiKeyService
-import com.example.ver20.dao.ApiKeyData
+import com.example.ver20.dao.dataclass.ApiKeyService
+import com.example.ver20.dao.dataclass.ApiKeyData
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

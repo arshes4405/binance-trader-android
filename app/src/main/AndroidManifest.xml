@@ -40,7 +40,7 @@
 
         <!-- 시세포착 워커 -->
         <service
-                android:name=".dao.MarketSignalWorker"
+                android:name=".dao.trading.signal.MarketSignalWorker"
                 android:exported="false" />
 
         <!-- 부트 리시버 -->

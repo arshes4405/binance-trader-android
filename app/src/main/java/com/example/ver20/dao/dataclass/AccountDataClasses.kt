@@ -1,6 +1,6 @@
 // AccountDataClasses.kt - 계좌 관련 모든 데이터 클래스 및 서비스 통합
 
-package com.example.ver20.dao
+package com.example.ver20.dao.dataclass
 
 import android.content.Context
 import android.content.SharedPreferences

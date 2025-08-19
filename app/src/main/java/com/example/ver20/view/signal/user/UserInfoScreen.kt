@@ -1,4 +1,4 @@
-package com.example.ver20.view.user
+package com.example.ver20.view.signal.user
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -16,8 +16,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.ver20.dao.UserService
-import com.example.ver20.dao.UserData
+import com.example.ver20.dao.mongoDB.UserService
+import com.example.ver20.dao.mongoDB.UserData
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

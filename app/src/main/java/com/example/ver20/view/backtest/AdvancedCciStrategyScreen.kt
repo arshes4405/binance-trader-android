@@ -1,6 +1,6 @@
 // 수정된 AdvancedCciStrategyScreen.kt - 실제 전략에 맞게 업데이트
 
-package com.example.ver20.view
+package com.example.ver20.view.backtest
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -20,9 +20,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.text.DecimalFormat
-import com.example.ver20.dao.CciStrategySettings
-import com.example.ver20.dao.RealCciBacktestResult
-import com.example.ver20.dao.RealCciStrategyEngine
+import com.example.ver20.dao.trading.backtest.CciStrategySettings
+import com.example.ver20.dao.trading.backtest.RealCciBacktestResult
+import com.example.ver20.dao.trading.backtest.RealCciStrategyEngine
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

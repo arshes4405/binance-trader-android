@@ -18,10 +18,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import com.example.ver20.ui.theme.Ver20Theme
 import com.example.ver20.view.account.AccountBalanceScreen
+import com.example.ver20.view.backtest.BacktestingScreen
+import com.example.ver20.view.price.AnalysisScreen
 import com.example.ver20.view.price.PriceScreen
-import com.example.ver20.view.user.LoginScreen
-import com.example.ver20.view.user.SecuritySettingsScreen
-import com.example.ver20.view.user.UserInfoScreen
+import com.example.ver20.view.signal.MarketSignalScreen
+import com.example.ver20.view.signal.user.CreateAccountScreen
+import com.example.ver20.view.signal.user.LoginScreen
+import com.example.ver20.view.signal.user.SecuritySettingsScreen
+import com.example.ver20.view.signal.user.UserInfoScreen
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {

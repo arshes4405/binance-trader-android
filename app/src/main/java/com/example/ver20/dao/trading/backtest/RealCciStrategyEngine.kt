@@ -1,6 +1,6 @@
 // RealCciStrategyEngine.kt - 롱/숏 완전 분리 버전
 
-package com.example.ver20.dao
+package com.example.ver20.dao.trading.backtest
 
 import android.util.Log
 import kotlinx.coroutines.Dispatchers

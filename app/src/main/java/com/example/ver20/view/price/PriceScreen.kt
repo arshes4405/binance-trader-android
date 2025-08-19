@@ -21,9 +21,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
 import android.widget.Toast
-import com.example.ver20.dao.UserService
-import com.example.ver20.dao.UserData
-import com.example.ver20.dao.MongoDbService
+import com.example.ver20.dao.mongoDB.UserService
+import com.example.ver20.dao.mongoDB.UserData
+import com.example.ver20.dao.mongoDB.MongoDbService
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext

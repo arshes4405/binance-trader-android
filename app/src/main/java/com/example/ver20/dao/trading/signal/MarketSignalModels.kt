@@ -1,8 +1,7 @@
 // MarketSignalModels.kt - 시세포착 관련 데이터 모델
 
-package com.example.ver20.dao
+package com.example.ver20.dao.trading.signal
 
-import com.google.gson.annotations.SerializedName
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.math.abs

@@ -1,7 +1,8 @@
 // MarketSignalMonitor.kt - 시세포착 백그라운드 모니터링 (재작성)
 
-package com.example.ver20.dao
+package com.example.ver20.dao.trading.signal
 
+import android.R
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -11,6 +12,7 @@ import android.os.Build
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.work.*
+import com.example.ver20.dao.mongoDB.UserService
 import com.example.ver20.view.MainActivity
 import java.util.concurrent.TimeUnit
 
@@ -104,7 +106,7 @@ class MarketSignalMonitor(private val context: Context) {
             val notification = NotificationCompat.Builder(context, NOTIFICATION_CHANNEL_ID)
                 .setContentTitle("$directionEmoji ${signal.symbol} ${directionText} 신호")
                 .setContentText("가격: ${String.format("%.2f", signal.price)} | CCI: ${String.format("%.1f", signal.cciValue)}")
-                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                .setSmallIcon(R.drawable.ic_dialog_info)
                 .setContentIntent(pendingIntent)
                 .setAutoCancel(true)
                 .setPriority(NotificationCompat.PRIORITY_HIGH)

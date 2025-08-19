@@ -1,8 +1,13 @@
 // RealBinanceApi.kt - 완전한 새 버전
 
-package com.example.ver20.dao
+package com.example.ver20.dao.binance
 
 import android.util.Log
+import com.example.ver20.dao.dataclass.AccountInfo
+import com.example.ver20.dao.dataclass.AccountResponse
+import com.example.ver20.dao.dataclass.ApiKeyData
+import com.example.ver20.dao.dataclass.BalanceInfo
+import com.example.ver20.dao.dataclass.BalanceUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import retrofit2.Response

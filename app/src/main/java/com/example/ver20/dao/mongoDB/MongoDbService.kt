@@ -1,6 +1,6 @@
 // MongoDbService.kt - 사용자별 즐겨찾기 관리로 수정
 
-package com.example.ver20.dao
+package com.example.ver20.dao.mongoDB
 
 import android.util.Log
 import retrofit2.Call
@@ -13,6 +13,7 @@ import retrofit2.http.*
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import okhttp3.ResponseBody
+import kotlin.collections.get
 
 // GET 방식 API 인터페이스 - 사용자별 관리
 interface VercelApi {
@@ -61,13 +62,13 @@ interface RawApi {
     fun getFavoriteCoinsRaw(
         @Query("action") action: String = "getFavoriteCoins",
         @Query("username") username: String
-    ): Call<okhttp3.ResponseBody>
+    ): Call<ResponseBody>
 
     @GET("api")
     fun getUserSettingsRaw(
         @Query("action") action: String = "getUserSettings",
         @Query("username") username: String
-    ): Call<okhttp3.ResponseBody>
+    ): Call<ResponseBody>
 }
 
 // 응답 데이터 클래스
@@ -141,8 +142,8 @@ class MongoDbService {
 
         Log.d("MongoDbService", "요청 URL: ${rawCall.request().url}")
 
-        rawCall.enqueue(object : Callback<okhttp3.ResponseBody> {
-            override fun onResponse(call: Call<okhttp3.ResponseBody>, response: Response<okhttp3.ResponseBody>) {
+        rawCall.enqueue(object : Callback<ResponseBody> {
+            override fun onResponse(call: Call<ResponseBody>, response: Response<ResponseBody>) {
                 Log.d("MongoDbService", "즐겨찾기 조회 응답: ${response.code()}")
 
                 if (response.isSuccessful) {
@@ -152,8 +153,8 @@ class MongoDbService {
 
                         if (jsonString.trim().startsWith("[")) {
                             // 배열로 직접 응답하는 경우
-                            val gson = com.google.gson.Gson()
-                            val type = object : com.google.gson.reflect.TypeToken<List<FavoriteCoinData>>() {}.type
+                            val gson = Gson()
+                            val type = object : TypeToken<List<FavoriteCoinData>>() {}.type
                             val coinList: List<FavoriteCoinData> = gson.fromJson(jsonString, type)
                             val symbols = coinList.map { it.symbol }
 
@@ -162,7 +163,7 @@ class MongoDbService {
 
                         } else if (jsonString.trim().startsWith("{")) {
                             // 객체로 응답하는 경우
-                            val gson = com.google.gson.Gson()
+                            val gson = Gson()
                             val apiResponse = gson.fromJson(jsonString, ApiResponse::class.java)
 
                             if (apiResponse.success == true && apiResponse.data is List<*>) {
@@ -196,7 +197,7 @@ class MongoDbService {
                 }
             }
 
-            override fun onFailure(call: Call<okhttp3.ResponseBody>, t: Throwable) {
+            override fun onFailure(call: Call<ResponseBody>, t: Throwable) {
                 Log.e("MongoDbService", "❌ 네트워크 오류: ${t.message}")
                 callback(emptyList(), "네트워크 오류: ${t.message}")
             }
@@ -299,8 +300,8 @@ class MongoDbService {
         val rawCall = rawApi.getUserSettingsRaw(username = username)
         Log.d("MongoDbService", "요청 URL: ${rawCall.request().url}")
 
-        rawCall.enqueue(object : Callback<okhttp3.ResponseBody> {
-            override fun onResponse(call: Call<okhttp3.ResponseBody>, response: Response<okhttp3.ResponseBody>) {
+        rawCall.enqueue(object : Callback<ResponseBody> {
+            override fun onResponse(call: Call<ResponseBody>, response: Response<ResponseBody>) {
                 Log.d("MongoDbService", "사용자 조회 응답: ${response.code()}")
 
                 if (response.isSuccessful) {
@@ -308,11 +309,11 @@ class MongoDbService {
                         val jsonString = response.body()?.string() ?: ""
                         Log.d("MongoDbService", "원본 JSON 응답: $jsonString")
 
-                        val gson = com.google.gson.Gson()
+                        val gson = Gson()
 
                         if (jsonString.trim().startsWith("{") && jsonString.contains("\"_id\"")) {
                             // 직접 MongoDB 문서 응답인 경우
-                            val type = object : com.google.gson.reflect.TypeToken<Map<String, Any>>() {}.type
+                            val type = object : TypeToken<Map<String, Any>>() {}.type
                             val userData: Map<String, Any> = gson.fromJson(jsonString, type)
 
                             Log.d("MongoDbService", "✅ 직접 MongoDB 문서 파싱 성공: $userData")
@@ -366,7 +367,7 @@ class MongoDbService {
                 }
             }
 
-            override fun onFailure(call: Call<okhttp3.ResponseBody>, t: Throwable) {
+            override fun onFailure(call: Call<ResponseBody>, t: Throwable) {
                 Log.e("MongoDbService", "❌ 네트워크 오류: ${t.message}")
                 callback(false, null, "네트워크 오류: ${t.message}")
             }

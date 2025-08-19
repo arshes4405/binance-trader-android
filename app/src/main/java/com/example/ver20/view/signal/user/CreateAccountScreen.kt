@@ -1,6 +1,7 @@
-package com.example.ver20.view
+package com.example.ver20.view.signal.user
 
 import android.util.Log
+import android.util.Patterns
 import android.widget.Toast
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardOptions
@@ -18,8 +19,8 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.ver20.dao.UserService
-import com.example.ver20.dao.UserData
+import com.example.ver20.dao.mongoDB.UserService
+import com.example.ver20.dao.mongoDB.UserData
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -329,7 +330,7 @@ private fun validateInput(
         name.isBlank() -> ValidationResult(false, "계정명을 입력해주세요")
         name.length < 3 -> ValidationResult(false, "계정명은 3자 이상이어야 합니다")
         email.isBlank() -> ValidationResult(false, "이메일을 입력해주세요")
-        !android.util.Patterns.EMAIL_ADDRESS.matcher(email).matches() ->
+        !Patterns.EMAIL_ADDRESS.matcher(email).matches() ->
             ValidationResult(false, "올바른 이메일 형식을 입력해주세요")
         password.isBlank() -> ValidationResult(false, "비밀번호를 입력해주세요")
         password.length < 6 -> ValidationResult(false, "비밀번호는 6자 이상이어야 합니다")

@@ -1,6 +1,6 @@
 // ApiTestScreen.kt - API 테스트 UI 화면
 
-package com.example.ver20.view
+package com.example.ver20.view.price
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -18,9 +18,9 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.ver20.dao.ApiKeyService
-import com.example.ver20.dao.BinanceApiTester
-import com.example.ver20.dao.ApiKeyData
+import com.example.ver20.dao.dataclass.ApiKeyService
+import com.example.ver20.dao.binance.BinanceApiTester
+import com.example.ver20.dao.dataclass.ApiKeyData
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)

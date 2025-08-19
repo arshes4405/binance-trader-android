@@ -1,6 +1,6 @@
 // BacktestingScreen.kt - 전략 목록 화면
 
-package com.example.ver20.view
+package com.example.ver20.view.backtest
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn

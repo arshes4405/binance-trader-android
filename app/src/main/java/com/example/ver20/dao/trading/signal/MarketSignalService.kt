@@ -1,6 +1,6 @@
 // MarketSignalService.kt - DB 기반 상태 시세포착 서비스
 
-package com.example.ver20.dao
+package com.example.ver20.dao.trading.signal
 
 import android.util.Log
 import retrofit2.Call
@@ -11,8 +11,6 @@ import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.*
 import kotlin.math.*
 import kotlinx.coroutines.*
-import com.google.gson.Gson
-import com.google.gson.reflect.TypeToken
 
 // 바이낸스 K-line API 인터페이스
 interface BinanceKlineApiForSinalService {

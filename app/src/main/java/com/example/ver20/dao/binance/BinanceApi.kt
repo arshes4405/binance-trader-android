@@ -1,4 +1,4 @@
-package com.example.ver20.dao
+package com.example.ver20.dao.binance
 
 import retrofit2.Call
 import retrofit2.http.GET
