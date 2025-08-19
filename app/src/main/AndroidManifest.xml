@@ -1,4 +1,4 @@
-<!-- AndroidManifest.xml - 코르타 AT 브랜딩 및 스플래시 설정 -->
+<!-- AndroidManifest.xml - 수정된 매니페스트 (Service 제거, Worker는 매니페스트 등록 불필요) -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
           xmlns:tools="http://schemas.android.com/tools">
 
@@ -38,14 +38,11 @@
             </intent-filter>
         </activity>
 
-        <!-- 시세포착 워커 -->
-        <service
-                android:name=".dao.trading.signal.MarketSignalWorker"
-                android:exported="false" />
+        <!-- Worker는 매니페스트에 등록하지 않음 - WorkManager가 자동 관리 -->
 
         <!-- 부트 리시버 -->
         <receiver
-                android:name=".dao.BootReceiver"
+                android:name=".dao.trading.signal.BootReceiver"
                 android:enabled="true"
                 android:exported="true">
             <intent-filter android:priority="1000">

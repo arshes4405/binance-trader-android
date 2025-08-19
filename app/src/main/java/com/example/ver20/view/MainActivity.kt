@@ -83,8 +83,8 @@ fun MainApp() {
     val tabs = listOf(
         TabItem("HOME", Icons.Default.Home),        // 대시보드 -> HOME 변경
         TabItem("코인검색", Icons.Default.Search),   // 기존 시세조회 복원
-        TabItem("시세포착", Icons.Default.Notifications), // 브랜딩 적용
         TabItem("계좌조회", Icons.Default.AccountBox), // 기존 계좌조회 복원
+        TabItem("시세포착", Icons.Default.Notifications), // 브랜딩 적용
         TabItem("백테스팅", Icons.Default.Analytics),
         TabItem("시세분석", Icons.Default.Info)
     )
@@ -379,8 +379,8 @@ fun MainScreen(
                 1 -> PriceScreen(      // 코인검색 - 기존 시세조회 복원
                     onShowCreateAccount = onShowCreateAccount
                 )
-                2 -> MarketSignalScreen() // 시세포착
-                3 -> AccountBalanceScreen( // 계좌조회 - 기존 기능 복원
+                3 -> MarketSignalScreen() // 시세포착
+                2 -> AccountBalanceScreen( // 계좌조회 - 기존 기능 복원
                     onShowSecuritySettings = onShowSecuritySettings
                 )
                 4 -> BacktestingScreen() // 백테스팅
