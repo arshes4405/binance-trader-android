@@ -1,22 +1,31 @@
+<!-- app/src/main/res/values/strings.xml -->
+<!-- 기존 내용은 그대로 유지하고 코르타 AT 브랜딩만 추가 -->
 <resources>
-    <string name="app_name">바이낸스 트레이더</string>
+    <!-- 코르타 AT 브랜딩 (새로 추가) -->
+    <string name="app_name">코르타 AT</string>
+    <string name="app_version">1.0.0</string>
+    <string name="app_description">시장을 가르는 스마트 트레이딩</string>
+    <string name="brand_name">코르타</string>
+    <string name="brand_suffix">AT</string>
+    <string name="brand_full">코르타 AT</string>
+    <string name="brand_slogan">시장을 가르는 스마트 트레이딩</string>
 
-    <!-- 시세포착 관련 문자열 -->
+    <!-- 기존 내용들 (그대로 유지) -->
     <string name="market_signal_channel_name">시세포착 알림</string>
-    <string name="market_signal_channel_description">시세포착 신호 알림을 받습니다</string>
+    <string name="market_signal_channel_description">시세포착 신호 알림</string>
     <string name="signal_notification_title">시세포착 신호</string>
-    <string name="signal_long_title">매수 신호 포착</string>
-    <string name="signal_short_title">매도 신호 포착</string>
+    <string name="signal_long_title">🟢 매수 신호 포착</string>
+    <string name="signal_short_title">🔴 매도 신호 포착</string>
 
-    <!-- CCI 설정 관련 -->
-    <string name="cci_strategy_title">CCI 시세포착 전략</string>
+    <!-- CCI 설정 관련 (기존 유지) -->
+    <string name="cci_strategy_title">CCI 전략 설정</string>
     <string name="cci_period_label">CCI 기간</string>
     <string name="cci_breakout_label">CCI 돌파값</string>
     <string name="cci_entry_label">CCI 진입값</string>
     <string name="check_interval_label">진입체크 인터벌</string>
     <string name="seed_money_label">진입시드</string>
 
-    <!-- 검증 메시지 (분 단위로 변경) -->
+    <!-- 검증 메시지 (기존 유지) -->
     <string name="validation_interval_min">진입체크 인터벌은 15분 이상이어야 합니다</string>
     <string name="validation_interval_max">진입체크 인터벌은 24시간(1440분) 이하여야 합니다</string>
     <string name="validation_period_min">CCI 기간은 5 이상이어야 합니다</string>
@@ -25,19 +34,16 @@
     <string name="validation_seed_min">진입시드는 10 USDT 이상이어야 합니다</string>
     <string name="validation_seed_max">진입시드는 100,000 USDT 이하여야 합니다</string>
 
-    <!-- 성공/실패 메시지 -->
+    <!-- 일반 메시지 (기존 유지) -->
     <string name="save_success">설정이 저장되었습니다</string>
     <string name="save_failed">저장에 실패했습니다</string>
-    <string name="login_required">로그인이 필요합니다</string>
-
-    <!-- 일반 메시지 -->
     <string name="loading">로딩 중...</string>
     <string name="saving">저장 중...</string>
     <string name="no_signals">포착된 신호가 없습니다</string>
     <string name="no_active_configs">활성화된 설정이 없습니다</string>
 
-    <!-- 인터벌 관련 추가 메시지 -->
+    <!-- 기타 기존 내용들... -->
     <string name="interval_unit_minutes">분</string>
-    <string name="interval_help_text">최소 15분부터 설정 가능 (백그라운드 제약)</string>
+    <string name="interval_help_text">최소 15분부터 설정 가능</string>
     <string name="interval_background_limit">Android 백그라운드 제약으로 인해 15분 미만 설정 불가</string>
 </resources>

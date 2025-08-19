@@ -1,6 +1,6 @@
 // AccountBalanceScreen.kt - 기존 파일을 이 내용으로 교체
 
-package com.example.ver20.view
+package com.example.ver20.view.account
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn

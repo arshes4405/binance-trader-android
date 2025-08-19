@@ -1,4 +1,4 @@
-package com.example.ver20.view
+package com.example.ver20.view.user
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState

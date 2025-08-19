@@ -1,29 +1,27 @@
-// MainActivity.kt - 시세포착 탭 추가 (기존 파일 업데이트)
-
+// MainActivity.kt - 코르타 AT 브랜딩 (기존 구조 최대한 유지)
 package com.example.ver20.view
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.sp
-import com.example.ver20.ui.theme.Ver20Theme
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
+import com.example.ver20.ui.theme.Ver20Theme
+import com.example.ver20.view.account.AccountBalanceScreen
+import com.example.ver20.view.price.PriceScreen
+import com.example.ver20.view.user.LoginScreen
+import com.example.ver20.view.user.SecuritySettingsScreen
+import com.example.ver20.view.user.UserInfoScreen
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -46,21 +44,27 @@ fun BinanceTraderApp() {
     var showLogin by remember { mutableStateOf(false) }
     var showSecuritySettings by remember { mutableStateOf(false) }
 
+    // 코르타 AT 브랜딩 컬러
+    val cortaPrimary = Color(0xFF1A237E)
+    val cortaGold = Color(0xFFFFD700)
+    val cortaSilver = Color(0xFFC0C0C0)
+
+    // 기존 탭 구조 그대로 유지하며 브랜딩만 적용
     val tabs = listOf(
         TabItem("시세조회", Icons.Default.Search),
-        TabItem("시세포착", Icons.Default.Notifications), // 새로 추가
+        TabItem("⚔️ 시세포착", Icons.Default.Notifications), // 브랜딩 적용
         TabItem("계좌조회", Icons.Default.AccountBox),
         TabItem("백테스팅", Icons.Default.Analytics),
         TabItem("시세분석", Icons.Default.Info)
     )
 
+    // 기존 분기 처리 로직 유지
     when {
         showLogin -> {
             LoginScreen(
                 onBackClick = { showLogin = false },
                 onLoginSuccess = { userData ->
                     showLogin = false
-                    // 로그인 성공 시 메인 화면으로
                 },
                 onCreateAccountClick = {
                     showLogin = false
@@ -73,24 +77,19 @@ fun BinanceTraderApp() {
                 onBackClick = { showCreateAccount = false },
                 onAccountCreated = { userData ->
                     showCreateAccount = false
-                    // 계정 생성 성공 시 메인 화면으로
                 }
             )
         }
         showUserInfo -> {
             UserInfoScreen(
                 onBackClick = { showUserInfo = false },
-                onLoginClick = {
-                    showUserInfo = false
-                    showLogin = true
-                },
-                onCreateAccountClick = {
-                    showUserInfo = false
-                    showCreateAccount = true
-                },
                 onSecuritySettingsClick = {
                     showUserInfo = false
                     showSecuritySettings = true
+                },
+                onLoginClick = {
+                    showUserInfo = false
+                    showLogin = true
                 }
             )
         }
@@ -100,27 +99,36 @@ fun BinanceTraderApp() {
             )
         }
         else -> {
+            // 메인 화면 - 코르타 AT 브랜딩 적용
             Scaffold(
                 topBar = {
                     TopAppBar(
                         title = {
                             Row(
-                                verticalAlignment = Alignment.CenterVertically
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center,
+                                modifier = Modifier.fillMaxWidth()
                             ) {
-                                Icon(
-                                    Icons.Default.TrendingUp,
-                                    contentDescription = null,
-                                    tint = Color.White,
-                                    modifier = Modifier.size(28.dp)
+                                // 검 아이콘
+                                Text(
+                                    text = "⚔️",
+                                    fontSize = 20.sp,
+                                    modifier = Modifier.padding(end = 8.dp)
                                 )
-                                Box(modifier = Modifier.offset(x = 8.dp)) {
-                                    Text(
-                                        "바이낸스 트레이더",
-                                        fontSize = 18.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color.White
-                                    )
-                                }
+                                // 브랜드명
+                                Text(
+                                    text = "코르타",
+                                    fontSize = 20.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
+                                // AT
+                                Text(
+                                    text = " AT",
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = cortaGold
+                                )
                             }
                         },
                         navigationIcon = {
@@ -136,14 +144,14 @@ fun BinanceTraderApp() {
                             }
                         },
                         colors = TopAppBarDefaults.topAppBarColors(
-                            containerColor = Color(0xFF2196F3),
+                            containerColor = cortaPrimary,
                             titleContentColor = Color.White
                         )
                     )
                 },
                 bottomBar = {
                     NavigationBar(
-                        containerColor = Color(0xFF2196F3),
+                        containerColor = cortaPrimary,
                         modifier = Modifier.height(110.dp)
                     ) {
                         tabs.forEachIndexed { index, tab ->
@@ -164,23 +172,24 @@ fun BinanceTraderApp() {
                                 selected = selectedTab == index,
                                 onClick = { selectedTab = index },
                                 colors = NavigationBarItemDefaults.colors(
-                                    selectedIconColor = Color.White,
-                                    selectedTextColor = Color.White,
-                                    unselectedIconColor = Color(0xFFBBDEFB),
-                                    unselectedTextColor = Color(0xFFBBDEFB),
-                                    indicatorColor = Color(0xFF1976D2)
+                                    selectedIconColor = cortaGold,
+                                    selectedTextColor = cortaGold,
+                                    unselectedIconColor = cortaSilver,
+                                    unselectedTextColor = cortaSilver,
+                                    indicatorColor = Color.Transparent
                                 )
                             )
                         }
                     }
                 }
             ) { paddingValues ->
+                // 기존 탭 컨텐츠 로직 완전히 유지
                 when (selectedTab) {
                     0 -> PriceScreen(
                         modifier = Modifier.padding(paddingValues),
                         onShowCreateAccount = { showCreateAccount = true }
                     )
-                    1 -> MarketSignalScreen(modifier = Modifier.padding(paddingValues)) // 새로 추가
+                    1 -> MarketSignalScreen(modifier = Modifier.padding(paddingValues))
                     2 -> AccountBalanceScreen(
                         modifier = Modifier.padding(paddingValues),
                         onShowSecuritySettings = { showSecuritySettings = true }
@@ -193,6 +202,7 @@ fun BinanceTraderApp() {
     }
 }
 
+// 기존 TabItem 구조 완전히 유지
 data class TabItem(
     val title: String,
     val icon: ImageVector

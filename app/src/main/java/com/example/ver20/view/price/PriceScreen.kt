@@ -1,6 +1,6 @@
 // 업데이트된 시세 조회 화면 - 코인 추가 및 새로고침 버튼 개선
 
-package com.example.ver20.view
+package com.example.ver20.view.price
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -24,7 +24,6 @@ import android.widget.Toast
 import com.example.ver20.dao.UserService
 import com.example.ver20.dao.UserData
 import com.example.ver20.dao.MongoDbService
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext

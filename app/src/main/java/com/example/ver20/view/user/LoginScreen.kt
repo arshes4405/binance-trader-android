@@ -1,4 +1,4 @@
-package com.example.ver20.view
+package com.example.ver20.view.user
 
 import android.widget.Toast
 import androidx.compose.foundation.layout.*
