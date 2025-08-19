@@ -1,12 +1,11 @@
 // BootReceiver.kt - 부팅 완료 시 시세포착 서비스 재시작
 
-package com.example.ver20.dao.signal
+package com.example.ver20.dao.trading.signal
 
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.util.Log
-import com.example.ver20.dao.trading.signal.MarketSignalMonitor
 
 /**
  * 부팅 완료 및 앱 업데이트 시 시세포착 모니터링을 재시작하는 리시버
