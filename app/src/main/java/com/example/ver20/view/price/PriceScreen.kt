@@ -1,4 +1,4 @@
-// 업데이트된 시세 조회 화면 - 코인 추가 및 새로고침 버튼 개선
+// 업데이트된 시세 조회 화면 - 위아래 빈공간 제거 (기존 디자인 유지)
 
 package com.example.ver20.view.price
 
@@ -51,7 +51,7 @@ data class CoinIndicatorInfo(
     val isLoading: Boolean = false
 )
 
-// ===== 메인 화면 =====
+// ===== 메인 화면 - 위아래 빈공간 제거 =====
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -71,7 +71,7 @@ fun PriceScreen(
     fun refreshFavoriteCoins() {
         currentUser?.let { userData ->
             val mongoService = MongoDbService()
-            mongoService.getFavoriteCoins(userData.username) { symbols, error ->
+            mongoService.getFavoriteCoins(userData.username) { symbols: List<String>, error: String? ->
                 if (error == null) {
                     scope.launch {
                         val favoriteCoins = symbols.map { symbol ->
@@ -105,161 +105,181 @@ fun PriceScreen(
         currentUser = userData
 
         if (hasUserInfo && userData != null) {
-            Toast.makeText(context, "안녕하세요, ${userData.username}님!", Toast.LENGTH_SHORT).show()
+            //Toast.makeText(context, "안녕하세요, ${userData.username}님!", Toast.LENGTH_SHORT).show()
             refreshFavoriteCoins()
         }
     }
 
-    Column(
+    // ===== LazyColumn으로 전체 공간 활용 =====
+    LazyColumn(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xFFF5F5F5))
-            .padding(16.dp)
+            .background(Color(0xFFF5F5F5)),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         // ===== 헤더 영역 =====
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF2196F3)),
-            shape = RoundedCornerShape(12.dp)
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF2196F3)),
+                shape = RoundedCornerShape(12.dp)
             ) {
-                // 사용자 정보 표시
-                Column {
-                    Text(
-                        "📊 코인 시세 조회",
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
-                    if (hasUserInfo && currentUser != null) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // 사용자 정보 표시
+                    Column {
                         Text(
-                            "환영합니다, ${currentUser!!.username}님",
-                            fontSize = 12.sp,
-                            color = Color(0xFFE3F2FD)
+                            "📊 코인 시세 조회",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
                         )
-                    }
-                }
-
-                // 버튼 영역
-                if (!hasUserInfo) {
-                    Button(
-                        onClick = onShowCreateAccount,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color.White
-                        )
-                    ) {
-                        Text(
-                            "계정생성",
-                            color = Color(0xFF2196F3),
-                            fontSize = 12.sp
-                        )
-                    }
-                } else {
-                    Column(
-                        horizontalAlignment = Alignment.End,
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        // 코인 추가 버튼
-                        Button(
-                            onClick = { showAddCoinDialog = true },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = Color.White
-                            ),
-                            modifier = Modifier.height(36.dp)
-                        ) {
-                            Icon(
-                                Icons.Default.Add,
-                                contentDescription = "코인 추가",
-                                tint = Color(0xFF2196F3),
-                                modifier = Modifier.size(14.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
+                        if (hasUserInfo && currentUser != null) {
                             Text(
-                                "코인추가",
-                                color = Color(0xFF2196F3),
-                                fontSize = 11.sp
+                                "환영합니다, ${currentUser!!.username}님",
+                                fontSize = 12.sp,
+                                color = Color(0xFFE3F2FD)
                             )
                         }
+                    }
 
-                        // 새로고침 버튼
+                    // 버튼 영역
+                    if (!hasUserInfo) {
                         Button(
-                            onClick = {
-                                scope.launch {
-                                    isRefreshing = true
-                                    refreshIndicators(coinIndicators) { updated ->
-                                        coinIndicators = updated
-                                        isRefreshing = false
-                                    }
-                                }
-                            },
+                            onClick = onShowCreateAccount,
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = Color.White
-                            ),
-                            modifier = Modifier.height(36.dp)
+                            )
                         ) {
-                            if (isRefreshing) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(14.dp),
-                                    color = Color(0xFF2196F3),
-                                    strokeWidth = 2.dp
-                                )
-                            } else {
+                            Text(
+                                "계정생성",
+                                color = Color(0xFF2196F3),
+                                fontSize = 12.sp
+                            )
+                        }
+                    } else {
+                        Column(
+                            horizontalAlignment = Alignment.End,
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            // 코인 추가 버튼
+                            Button(
+                                onClick = { showAddCoinDialog = true },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color.White
+                                ),
+                                modifier = Modifier.height(36.dp)
+                            ) {
                                 Icon(
-                                    Icons.Default.Refresh,
-                                    contentDescription = "새로고침",
+                                    Icons.Default.Add,
+                                    contentDescription = "코인 추가",
                                     tint = Color(0xFF2196F3),
                                     modifier = Modifier.size(14.dp)
                                 )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    "코인추가",
+                                    color = Color(0xFF2196F3),
+                                    fontSize = 11.sp
+                                )
                             }
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                if (isRefreshing) "업데이트중" else "새로고침",
-                                color = Color(0xFF2196F3),
-                                fontSize = 11.sp
-                            )
+
+                            // 새로고침 버튼
+                            Button(
+                                onClick = {
+                                    scope.launch {
+                                        isRefreshing = true
+                                        refreshIndicators(coinIndicators) { updated ->
+                                            coinIndicators = updated
+                                            isRefreshing = false
+                                        }
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color.White
+                                ),
+                                modifier = Modifier.height(36.dp)
+                            ) {
+                                if (isRefreshing) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(14.dp),
+                                        color = Color(0xFF2196F3),
+                                        strokeWidth = 2.dp
+                                    )
+                                } else {
+                                    Icon(
+                                        Icons.Default.Refresh,
+                                        contentDescription = "새로고침",
+                                        tint = Color(0xFF2196F3),
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    if (isRefreshing) "업데이트중" else "새로고침",
+                                    color = Color(0xFF2196F3),
+                                    fontSize = 11.sp
+                                )
+                            }
                         }
                     }
                 }
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
-
         // ===== 코인 목록 또는 안내 메시지 =====
         if (coinIndicators.isEmpty()) {
-            Box(
-                modifier = Modifier.fillMaxWidth(),
-                contentAlignment = Alignment.Center
-            ) {
+            item {
                 Card(
+                    modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF3E0))
                 ) {
-                    Text(
-                        modifier = Modifier.padding(20.dp),
-                        text = if (hasUserInfo) {
-                            "즐겨찾기 코인이 없습니다.\n'코인추가' 버튼을 눌러 코인을 추가해보세요!"
-                        } else {
-                            "로그인 후 즐겨찾기 코인을\n등록하실 수 있습니다."
-                        },
-                        fontSize = 14.sp,
-                        color = Color(0xFFE65100),
-                        textAlign = TextAlign.Center
-                    )
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Icon(
+                            if (hasUserInfo) Icons.Default.Add else Icons.Default.AccountCircle,
+                            contentDescription = null,
+                            modifier = Modifier.size(48.dp),
+                            tint = Color(0xFFE65100)
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = if (hasUserInfo) {
+                                "즐겨찾기 코인이 없습니다."
+                            } else {
+                                "로그인 후 즐겨찾기 코인을 등록하세요."
+                            },
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Medium,
+                            textAlign = TextAlign.Center,
+                            color = Color(0xFFE65100)
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = if (hasUserInfo) {
+                                "'코인추가' 버튼을 눌러 코인을 추가해보세요!"
+                            } else {
+                                "계정을 생성하고 다양한 기능을 이용해보세요."
+                            },
+                            fontSize = 14.sp,
+                            textAlign = TextAlign.Center,
+                            color = Color(0xFF666666)
+                        )
+                    }
                 }
             }
-        }
-
-        // 코인 목록
-        LazyColumn(
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-            contentPadding = PaddingValues(bottom = 20.dp)
-        ) {
+        } else {
+            // ===== 코인 목록 =====
             items(coinIndicators) { coin ->
                 CoinIndicatorCard(
                     coin = coin,
@@ -276,7 +296,7 @@ fun PriceScreen(
                         // 즐겨찾기에서 코인 삭제
                         currentUser?.let { userData ->
                             val mongoService = MongoDbService()
-                            mongoService.removeFavoriteCoin(userData.username, coin.symbol) { success, message ->
+                            mongoService.removeFavoriteCoin(userData.username, coin.symbol) { success: Boolean, message: String? ->
                                 scope.launch {
                                     if (success) {
                                         Toast.makeText(context, "코인이 삭제되었습니다", Toast.LENGTH_SHORT).show()
@@ -300,7 +320,7 @@ fun PriceScreen(
             onConfirm = { symbol ->
                 currentUser?.let { userData ->
                     val mongoService = MongoDbService()
-                    mongoService.saveFavoriteCoin(userData.username, symbol) { success, message ->
+                    mongoService.saveFavoriteCoin(userData.username, symbol) { success: Boolean, message: String? ->
                         scope.launch {
                             if (success) {
                                 Toast.makeText(context, "코인이 추가되었습니다", Toast.LENGTH_SHORT).show()
@@ -317,7 +337,7 @@ fun PriceScreen(
     }
 }
 
-// ===== 코인 지표 카드 (삭제 버튼 추가) =====
+// ===== 코인 지표 카드 (기존 디자인 완전 유지) =====
 
 @Composable
 fun CoinIndicatorCard(
@@ -526,7 +546,7 @@ fun CoinIndicatorCard(
     }
 }
 
-// ===== 지표 셀 컴포저블 =====
+// ===== 지표 셀 컴포저블 (기존과 동일) =====
 
 @Composable
 fun TableIndicatorCell(
@@ -596,7 +616,7 @@ fun TableIndicatorCell(
     }
 }
 
-// ===== 코인 추가 다이얼로그 =====
+// ===== 코인 추가 다이얼로그 - 직접 입력 방식 =====
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -604,89 +624,145 @@ fun AddCoinDialog(
     onDismiss: () -> Unit,
     onConfirm: (String) -> Unit
 ) {
-    var selectedSymbol by remember { mutableStateOf("") }
+    var inputText by remember { mutableStateOf("") }
+    var isValidSymbol by remember { mutableStateOf(true) }
 
-    // 인기 코인 목록
-    val popularCoins = listOf(
-        "BTCUSDT" to "비트코인",
-        "ETHUSDT" to "이더리움",
-        "BNBUSDT" to "바이낸스코인",
-        "XRPUSDT" to "리플",
-        "ADAUSDT" to "에이다",
-        "DOGEUSDT" to "도지코인",
-        "SOLUSDT" to "솔라나",
-        "DOTUSDT" to "폴카닷",
-        "MATICUSDT" to "폴리곤",
-        "LTCUSDT" to "라이트코인",
-        "AVAXUSDT" to "아발란체",
-        "LINKUSDT" to "체인링크",
-        "UNIUSDT" to "유니스왑",
-        "ATOMUSDT" to "코스모스",
-        "FILUSDT" to "파일코인"
-    )
+    // 유효한 심볼인지 체크하는 함수
+    fun validateSymbol(input: String): Boolean {
+        if (input.isBlank()) return false
+        val symbol = input.uppercase().trim()
+        return symbol.matches(Regex("^[A-Z]{2,10}$")) // 2-10자의 영문 대문자만 허용
+    }
+
+    // 입력값을 USDT 심볼로 변환
+    fun convertToUSDTSymbol(input: String): String {
+        val cleanInput = input.uppercase().trim()
+        return if (cleanInput.endsWith("USDT")) {
+            cleanInput
+        } else {
+            "${cleanInput}USDT"
+        }
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
             Text(
-                "즐겨찾기 코인 추가",
+                "코인 추가",
                 fontWeight = FontWeight.Bold
             )
         },
         text = {
             Column {
                 Text(
-                    "추가할 코인을 선택해주세요:",
+                    "추가할 코인 심볼을 입력해주세요:",
                     fontSize = 14.sp,
                     color = Color(0xFF666666)
                 )
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
-                LazyColumn(
-                    modifier = Modifier.height(300.dp)
+                Text(
+                    "예시: BTC, ETH, BNB (USDT는 자동 추가)",
+                    fontSize = 12.sp,
+                    color = Color(0xFF999999)
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                OutlinedTextField(
+                    value = inputText,
+                    onValueChange = { newValue ->
+                        inputText = newValue
+                        isValidSymbol = validateSymbol(newValue)
+                    },
+                    label = { Text("심볼 입력") },
+                    placeholder = { Text("BTC") },
+                    isError = !isValidSymbol && inputText.isNotEmpty(),
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = if (isValidSymbol) Color(0xFF2196F3) else Color.Red,
+                        focusedLabelColor = if (isValidSymbol) Color(0xFF2196F3) else Color.Red
+                    )
+                )
+
+                if (!isValidSymbol && inputText.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        "올바른 심볼을 입력해주세요 (영문 2-10자)",
+                        fontSize = 12.sp,
+                        color = Color.Red
+                    )
+                }
+
+                if (inputText.isNotEmpty() && isValidSymbol) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        "추가될 심볼: ${convertToUSDTSymbol(inputText)}",
+                        fontSize = 12.sp,
+                        color = Color(0xFF4CAF50),
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // 빠른 선택 버튼들
+                Text(
+                    "빠른 선택:",
+                    fontSize = 12.sp,
+                    color = Color(0xFF666666),
+                    fontWeight = FontWeight.Medium
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    items(popularCoins) { (symbol, name) ->
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    selectedSymbol = symbol
-                                },
-                            colors = CardDefaults.cardColors(
-                                containerColor = if (selectedSymbol == symbol) {
-                                    Color(0xFFE3F2FD)
-                                } else {
-                                    Color(0xFFFAFAFA)
-                                }
-                            )
+                    val quickSymbols = listOf("BTC", "ETH", "BNB", "XRP")
+                    quickSymbols.forEach { symbol ->
+                        OutlinedButton(
+                            onClick = { inputText = symbol },
+                            modifier = Modifier.weight(1f).height(36.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = Color(0xFF2196F3)
+                            ),
+                            contentPadding = PaddingValues(4.dp)
                         ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(12.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    getCoinEmoji(symbol),
-                                    fontSize = 20.sp
-                                )
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Column {
-                                    Text(
-                                        name,
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                    Text(
-                                        symbol,
-                                        fontSize = 12.sp,
-                                        color = Color(0xFF666666)
-                                    )
-                                }
-                            }
+                            Text(
+                                symbol,
+                                fontSize = 11.sp,
+                                maxLines = 1
+                            )
                         }
-                        Spacer(modifier = Modifier.height(4.dp))
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    val quickSymbols2 = listOf("ADA", "SOL", "DOT", "MATIC")
+                    quickSymbols2.forEach { symbol ->
+                        OutlinedButton(
+                            onClick = { inputText = symbol },
+                            modifier = Modifier.weight(1f).height(36.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = Color(0xFF2196F3)
+                            ),
+                            contentPadding = PaddingValues(4.dp)
+                        ) {
+                            Text(
+                                symbol,
+                                fontSize = 11.sp,
+                                maxLines = 1
+                            )
+                        }
                     }
                 }
             }
@@ -694,11 +770,12 @@ fun AddCoinDialog(
         confirmButton = {
             TextButton(
                 onClick = {
-                    if (selectedSymbol.isNotEmpty()) {
-                        onConfirm(selectedSymbol)
+                    if (isValidSymbol && inputText.isNotEmpty()) {
+                        val finalSymbol = convertToUSDTSymbol(inputText)
+                        onConfirm(finalSymbol)
                     }
                 },
-                enabled = selectedSymbol.isNotEmpty()
+                enabled = isValidSymbol && inputText.isNotEmpty()
             ) {
                 Text("추가")
             }
@@ -711,7 +788,7 @@ fun AddCoinDialog(
     )
 }
 
-// ===== 유틸리티 함수들 =====
+// ===== 유틸리티 함수들 (기존과 동일) =====
 
 private fun getKoreanName(baseSymbol: String): String {
     return when (baseSymbol.replace("USDT", "")) {
@@ -758,7 +835,7 @@ private fun getCoinEmoji(symbol: String): String {
 // 초기 코인 목록 (빈 목록으로 시작)
 private fun getInitialCoinList(): List<CoinIndicatorInfo> = emptyList()
 
-// 가격 및 지표 정보 새로고침 함수들
+// 가격 및 지표 정보 새로고침 함수들 (기존과 동일)
 private suspend fun refreshIndicators(
     coins: List<CoinIndicatorInfo>,
     onUpdate: (List<CoinIndicatorInfo>) -> Unit
