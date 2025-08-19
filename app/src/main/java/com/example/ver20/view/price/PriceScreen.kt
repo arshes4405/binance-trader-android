@@ -41,11 +41,12 @@ data class TechnicalIndicatorData(
     val rsiValue: Double
 )
 
+// CoinIndicatorInfo 데이터 클래스에 현재가/상승률 추가
 data class CoinIndicatorInfo(
     val symbol: String,
     val displayName: String,
-    val currentPrice: Double = 0.0,
-    val priceChange24h: Double = 0.0,
+    val currentPrice: Double = 0.0,        // 현재가 추가
+    val changePercent: Double = 0.0,       // 24시간 변동률 추가
     val min15: TechnicalIndicatorData?,
     val hour1: TechnicalIndicatorData?,
     val hour4: TechnicalIndicatorData?,
@@ -357,7 +358,7 @@ fun PriceScreen(
                         ) {
                             Text(
                                 "코인",
-                                modifier = Modifier.weight(1.2f),
+                                modifier = Modifier.weight(0.8f),
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color.White
@@ -379,10 +380,10 @@ fun PriceScreen(
                                 .padding(top = 4.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Spacer(modifier = Modifier.weight(1.2f))
+                            Spacer(modifier = Modifier.weight(0.6f))
                             Row(modifier = Modifier.weight(2f)) {
                                 Text("15m", modifier = Modifier.weight(1f), fontSize = 12.sp, textAlign = TextAlign.Center, color = Color(0xFFFFD700), fontWeight = FontWeight.Medium)
-                                Text("1h", modifier = Modifier.weight(1f), fontSize = 12.sp, textAlign = TextAlign.Center, color = Color(0xFFFFD700), fontWeight = FontWeight.Medium)
+                                Text("1h", modifier = Modifier.weight(1.2f), fontSize = 12.sp, textAlign = TextAlign.Center, color = Color(0xFFFFD700), fontWeight = FontWeight.Medium)
                                 Text("4h", modifier = Modifier.weight(1f), fontSize = 12.sp, textAlign = TextAlign.Center, color = Color(0xFFFFD700), fontWeight = FontWeight.Medium)
                                 Text("1d", modifier = Modifier.weight(1f), fontSize = 12.sp, textAlign = TextAlign.Center, color = Color(0xFFFFD700), fontWeight = FontWeight.Medium)
                             }
@@ -780,19 +781,25 @@ fun AddCoinDialog(
 
 // ===== DAO 레이어를 사용한 지표 로드 =====
 
-suspend fun loadIndicatorsForCoin(symbol: String, onResult: (CoinIndicatorInfo) -> Unit) {
+// loadIndicatorsForCoin 함수 수정 - 가격 정보도 함께 로드
+suspend fun loadIndicatorsForCoin(
+    symbol: String,
+    onResult: (CoinIndicatorInfo) -> Unit
+) {
     withContext(Dispatchers.IO) {
         try {
-            // DAO 레이어 사용
             val indicatorCalculator = TechnicalIndicatorCalculator()
 
-            // 모든 시간대의 지표를 한 번에 계산
+            // 1. 기술적 지표 계산
             val indicators = indicatorCalculator.calculateMultiTimeframeIndicators(
                 symbol = symbol,
                 timeframes = listOf("15m", "1h", "4h", "1d"),
                 cciPeriod = 20,
-                rsiPeriod = 7  // RSI 7일 유지
+                rsiPeriod = 7
             )
+
+            // 2. 현재가와 24시간 변동률 가져오기
+            val priceInfo = getCurrentPriceAndChange(symbol)
 
             // IndicatorResult를 TechnicalIndicatorData로 변환
             val convertedIndicators = mutableMapOf<String, TechnicalIndicatorData>()
@@ -807,6 +814,8 @@ suspend fun loadIndicatorsForCoin(symbol: String, onResult: (CoinIndicatorInfo) 
             val updatedCoin = CoinIndicatorInfo(
                 symbol = symbol,
                 displayName = formatDisplayName(symbol),
+                currentPrice = priceInfo.first,      // 현재가
+                changePercent = priceInfo.second,    // 24시간 변동률
                 min15 = convertedIndicators["15m"],
                 hour1 = convertedIndicators["1h"],
                 hour4 = convertedIndicators["4h"],
@@ -814,15 +823,16 @@ suspend fun loadIndicatorsForCoin(symbol: String, onResult: (CoinIndicatorInfo) 
                 isLoading = false
             )
 
-            Log.d("PriceScreen", "DAO로 지표 계산 완료: $symbol")
+            Log.d("PriceScreen", "가격 정보 로드 완료: $symbol - 현재가: ${priceInfo.first}, 변동률: ${priceInfo.second}%")
             onResult(updatedCoin)
 
         } catch (e: Exception) {
-            Log.e("PriceScreen", "DAO 지표 계산 실패: ${e.message}")
-            // 전체 로드 실패 시
+            Log.e("PriceScreen", "데이터 로드 실패: ${e.message}")
             val errorCoin = CoinIndicatorInfo(
                 symbol = symbol,
                 displayName = formatDisplayName(symbol),
+                currentPrice = 0.0,
+                changePercent = 0.0,
                 min15 = null,
                 hour1 = null,
                 hour4 = null,
@@ -830,6 +840,37 @@ suspend fun loadIndicatorsForCoin(symbol: String, onResult: (CoinIndicatorInfo) 
                 isLoading = false
             )
             onResult(errorCoin)
+        }
+    }
+}
+
+// 현재가와 24시간 변동률을 가져오는 함수 추가
+suspend fun getCurrentPriceAndChange(symbol: String): Pair<Double, Double> {
+    return withContext(Dispatchers.IO) {
+        try {
+            val client = OkHttpClient()
+            val request = Request.Builder()
+                .url("https://api.binance.com/api/v3/ticker/24hr?symbol=$symbol")
+                .build()
+
+            val response = client.newCall(request).execute()
+            val jsonString = response.body?.string() ?: return@withContext Pair(0.0, 0.0)
+
+            // JSON 파싱 (간단한 방식)
+            val currentPriceRegex = "\"lastPrice\":\"([^\"]+)\"".toRegex()
+            val changePercentRegex = "\"priceChangePercent\":\"([^\"]+)\"".toRegex()
+
+            val currentPriceMatch = currentPriceRegex.find(jsonString)
+            val changePercentMatch = changePercentRegex.find(jsonString)
+
+            val currentPrice = currentPriceMatch?.groupValues?.get(1)?.toDoubleOrNull() ?: 0.0
+            val changePercent = changePercentMatch?.groupValues?.get(1)?.toDoubleOrNull() ?: 0.0
+
+            Pair(currentPrice, changePercent)
+
+        } catch (e: Exception) {
+            Log.e("PriceScreen", "가격 정보 로드 실패: ${e.message}")
+            Pair(0.0, 0.0)
         }
     }
 }

@@ -233,7 +233,7 @@ fun SplashScreen() {
                     text = "코르타",
                     fontSize = 28.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color.White
+                    color = Color(0xFFFFD700)
                 )
                 Text(
                     text = " AT",
@@ -310,7 +310,7 @@ fun MainScreen(
                             text = "코르타",
                             fontSize = 20.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color.White
+                            color = Color(0xFFFFD700)
                         )
                         // AT
                         Text(
@@ -330,7 +330,7 @@ fun MainScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color(0xFF1976D2)
+                    containerColor = Color(0xFF1E1E1E)
                 )
             )
         },
