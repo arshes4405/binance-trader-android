@@ -1,4 +1,4 @@
-// 업데이트된 시세 조회 화면 - 위아래 빈공간 제거 (기존 디자인 유지)
+// 업데이트된 시세 조회 화면 - HOME처럼 검은색 배경 적용
 
 package com.example.ver20.view.price
 
@@ -14,6 +14,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -21,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
 import android.widget.Toast
+import android.util.Log
 import com.example.ver20.dao.mongoDB.UserService
 import com.example.ver20.dao.mongoDB.UserData
 import com.example.ver20.dao.mongoDB.MongoDbService
@@ -30,6 +32,8 @@ import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import kotlin.math.abs
+import com.example.ver20.dao.trading.indicator.TechnicalIndicatorCalculator
+import com.example.ver20.dao.trading.indicator.IndicatorResult
 
 // ===== 데이터 모델 =====
 
@@ -51,7 +55,7 @@ data class CoinIndicatorInfo(
     val isLoading: Boolean = false
 )
 
-// ===== 메인 화면 - 위아래 빈공간 제거 =====
+// ===== 메인 화면 - HOME처럼 검은색 배경 적용 =====
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -67,17 +71,41 @@ fun PriceScreen(
     var showAddCoinDialog by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
+    // HOME과 같은 배경 그라데이션
+    val gradientBrush = Brush.verticalGradient(
+        colors = listOf(
+            Color(0xFF0D1117),
+            Color(0xFF1A1A2E),
+            Color(0xFF16213E)
+        )
+    )
+
+    // 모든 코인의 지표 로드 함수 (먼저 정의)
+    fun loadAllIndicators() {
+        scope.launch {
+            coinIndicators.forEach { coin ->
+                loadIndicatorsForCoin(coin.symbol) { updatedCoin ->
+                    scope.launch(Dispatchers.Main) {
+                        coinIndicators = coinIndicators.map {
+                            if (it.symbol == updatedCoin.symbol) updatedCoin else it
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // 즐겨찾기 코인 새로고침 함수
     fun refreshFavoriteCoins() {
         currentUser?.let { userData ->
             val mongoService = MongoDbService()
             mongoService.getFavoriteCoins(userData.username) { symbols: List<String>, error: String? ->
-                if (error == null) {
-                    scope.launch {
-                        val favoriteCoins = symbols.map { symbol ->
+                scope.launch(Dispatchers.Main) {
+                    if (error == null && symbols.isNotEmpty()) {
+                        val newCoinList = symbols.map { symbol ->
                             CoinIndicatorInfo(
                                 symbol = symbol,
-                                displayName = getKoreanName(symbol),
+                                displayName = formatDisplayName(symbol),
                                 min15 = null,
                                 hour1 = null,
                                 hour4 = null,
@@ -85,147 +113,165 @@ fun PriceScreen(
                                 isLoading = true
                             )
                         }
-                        coinIndicators = favoriteCoins
-
-                        // 지표 및 가격 정보 업데이트
-                        refreshIndicators(coinIndicators) { updated ->
-                            coinIndicators = updated
-                        }
+                        coinIndicators = newCoinList
+                        loadAllIndicators()
+                    } else {
+                        coinIndicators = emptyList()
                     }
                 }
             }
         }
     }
 
-    // 사용자 정보 확인 및 즐겨찾기 코인 로드
+    // 사용자 정보 로드
     LaunchedEffect(Unit) {
         val userService = UserService()
         val userData = userService.getUserFromPreferences(context)
-        hasUserInfo = userData != null
         currentUser = userData
+        hasUserInfo = userData != null
 
-        if (hasUserInfo && userData != null) {
-            //Toast.makeText(context, "안녕하세요, ${userData.username}님!", Toast.LENGTH_SHORT).show()
+        if (userData != null) {
             refreshFavoriteCoins()
         }
     }
 
-    // ===== LazyColumn으로 전체 공간 활용 =====
+    // 코인 추가 다이얼로그
+    if (showAddCoinDialog) {
+        AddCoinDialog(
+            onDismiss = { showAddCoinDialog = false },
+            onConfirm = { symbol ->
+                currentUser?.let { userData ->
+                    val mongoService = MongoDbService()
+                    mongoService.saveFavoriteCoin(userData.username, symbol.uppercase()) { success: Boolean, message: String? ->
+                        scope.launch(Dispatchers.Main) {
+                            if (success) {
+                                Toast.makeText(context, "코인이 추가되었습니다", Toast.LENGTH_SHORT).show()
+                                refreshFavoriteCoins()
+                            } else {
+                                Toast.makeText(context, message ?: "추가 실패", Toast.LENGTH_SHORT).show()
+                            }
+                            showAddCoinDialog = false
+                        }
+                    }
+                }
+            }
+        )
+    }
+
+    // 메인 UI - 검은색 배경 적용
     LazyColumn(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xFFF5F5F5)),
+            .background(gradientBrush),
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // ===== 헤더 영역 =====
+        // ===== 헤더 카드 - 어두운 테마로 변경 =====
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF2196F3)),
-                shape = RoundedCornerShape(12.dp)
+                colors = CardDefaults.cardColors(
+                    containerColor = Color.Black.copy(alpha = 0.6f)
+                ),
+                shape = RoundedCornerShape(16.dp)
             ) {
-                Row(
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(16.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                        .padding(20.dp)
                 ) {
-                    // 사용자 정보 표시
-                    Column {
-                        Text(
-                            "📊 코인 시세 조회",
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
-                        )
-                        if (hasUserInfo && currentUser != null) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
                             Text(
-                                "환영합니다, ${currentUser!!.username}님",
-                                fontSize = 12.sp,
-                                color = Color(0xFFE3F2FD)
+                                "📊 코인 검색",
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFFFD700) // 골드색
                             )
-                        }
-                    }
-
-                    // 버튼 영역
-                    if (!hasUserInfo) {
-                        Button(
-                            onClick = onShowCreateAccount,
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = Color.White
-                            )
-                        ) {
-                            Text(
-                                "계정생성",
-                                color = Color(0xFF2196F3),
-                                fontSize = 12.sp
-                            )
-                        }
-                    } else {
-                        Column(
-                            horizontalAlignment = Alignment.End,
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            // 코인 추가 버튼
-                            Button(
-                                onClick = { showAddCoinDialog = true },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = Color.White
-                                ),
-                                modifier = Modifier.height(36.dp)
-                            ) {
-                                Icon(
-                                    Icons.Default.Add,
-                                    contentDescription = "코인 추가",
-                                    tint = Color(0xFF2196F3),
-                                    modifier = Modifier.size(14.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
+                            if (hasUserInfo && currentUser != null) {
                                 Text(
-                                    "코인추가",
-                                    color = Color(0xFF2196F3),
-                                    fontSize = 11.sp
+                                    "환영합니다, ${currentUser!!.username}님",
+                                    fontSize = 12.sp,
+                                    color = Color(0xFFE3F2FD)
                                 )
                             }
+                        }
 
-                            // 새로고침 버튼
+                        // 버튼 영역
+                        if (!hasUserInfo) {
                             Button(
-                                onClick = {
-                                    scope.launch {
+                                onClick = onShowCreateAccount,
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(0xFFFFD700)
+                                )
+                            ) {
+                                Text(
+                                    "계정생성",
+                                    color = Color.Black,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        } else {
+                            Column(
+                                horizontalAlignment = Alignment.End,
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                // 코인 추가 버튼
+                                Button(
+                                    onClick = { showAddCoinDialog = true },
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = Color(0xFFFFD700)
+                                    ),
+                                    modifier = Modifier.height(36.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Add,
+                                        contentDescription = "코인 추가",
+                                        tint = Color.Black,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        "코인추가",
+                                        color = Color.Black,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+
+                                // 새로고침 버튼
+                                Button(
+                                    onClick = {
                                         isRefreshing = true
-                                        refreshIndicators(coinIndicators) { updated ->
-                                            coinIndicators = updated
+                                        refreshFavoriteCoins()
+                                        scope.launch {
+                                            kotlinx.coroutines.delay(1000)
                                             isRefreshing = false
                                         }
-                                    }
-                                },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = Color.White
-                                ),
-                                modifier = Modifier.height(36.dp)
-                            ) {
-                                if (isRefreshing) {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.size(14.dp),
-                                        color = Color(0xFF2196F3),
-                                        strokeWidth = 2.dp
-                                    )
-                                } else {
+                                    },
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = Color(0xFF2196F3)
+                                    ),
+                                    modifier = Modifier.height(36.dp)
+                                ) {
                                     Icon(
                                         Icons.Default.Refresh,
                                         contentDescription = "새로고침",
-                                        tint = Color(0xFF2196F3),
+                                        tint = Color.White,
                                         modifier = Modifier.size(14.dp)
                                     )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        if (isRefreshing) "업데이트중" else "새로고침",
+                                        color = Color.White,
+                                        fontSize = 11.sp
+                                    )
                                 }
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    if (isRefreshing) "업데이트중" else "새로고침",
-                                    color = Color(0xFF2196F3),
-                                    fontSize = 11.sp
-                                )
                             }
                         }
                     }
@@ -233,12 +279,15 @@ fun PriceScreen(
             }
         }
 
-        // ===== 코인 목록 또는 안내 메시지 =====
+        // ===== 코인 목록 또는 안내 메시지 - 어두운 테마로 변경 =====
         if (coinIndicators.isEmpty()) {
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF3E0))
+                    colors = CardDefaults.cardColors(
+                        containerColor = Color.Black.copy(alpha = 0.4f)
+                    ),
+                    shape = RoundedCornerShape(16.dp)
                 ) {
                     Column(
                         modifier = Modifier
@@ -250,7 +299,7 @@ fun PriceScreen(
                             if (hasUserInfo) Icons.Default.Add else Icons.Default.AccountCircle,
                             contentDescription = null,
                             modifier = Modifier.size(48.dp),
-                            tint = Color(0xFFE65100)
+                            tint = Color(0xFFFFD700)
                         )
                         Spacer(modifier = Modifier.height(16.dp))
                         Text(
@@ -262,7 +311,7 @@ fun PriceScreen(
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Medium,
                             textAlign = TextAlign.Center,
-                            color = Color(0xFFE65100)
+                            color = Color.White
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
@@ -271,38 +320,106 @@ fun PriceScreen(
                             } else {
                                 "계정을 생성하고 다양한 기능을 이용해보세요."
                             },
-                            fontSize = 14.sp,
+                            fontSize = 12.sp,
                             textAlign = TextAlign.Center,
-                            color = Color(0xFF666666)
+                            color = Color.Gray
                         )
                     }
                 }
             }
         } else {
-            // ===== 코인 목록 =====
-            items(coinIndicators) { coin ->
-                CoinIndicatorCard(
-                    coin = coin,
-                    onRefresh = {
-                        scope.launch {
-                            refreshSingleCoin(coin) { updated ->
-                                coinIndicators = coinIndicators.map {
-                                    if (it.symbol == updated.symbol) updated else it
-                                }
+            // ===== 지표 테이블 헤더 - 어두운 테마로 변경 =====
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = Color.Black.copy(alpha = 0.6f)
+                    ),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp)
+                    ) {
+                        // 타이틀
+                        Text(
+                            "📈 기술적 지표 현황",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFFFFD700),
+                            modifier = Modifier.padding(bottom = 12.dp)
+                        )
+
+                        // 테이블 헤더
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                "코인",
+                                modifier = Modifier.weight(1.2f),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                            Text(
+                                "CCI",
+                                modifier = Modifier.weight(2f),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                textAlign = TextAlign.Center,
+                                color = Color(0xFF81C784)
+                            )
+                            Text(
+                                "RSI",
+                                modifier = Modifier.weight(2f),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                textAlign = TextAlign.Center,
+                                color = Color(0xFFFFB74D)
+                            )
+                        }
+
+                        // 시간대 헤더
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Spacer(modifier = Modifier.weight(1.2f))
+                            Row(modifier = Modifier.weight(2f)) {
+                                Text("15m", modifier = Modifier.weight(1f), fontSize = 12.sp, textAlign = TextAlign.Center, color = Color.White, fontWeight = FontWeight.Medium)
+                                Text("1h", modifier = Modifier.weight(1f), fontSize = 12.sp, textAlign = TextAlign.Center, color = Color.White, fontWeight = FontWeight.Medium)
+                                Text("4h", modifier = Modifier.weight(1f), fontSize = 12.sp, textAlign = TextAlign.Center, color = Color.White, fontWeight = FontWeight.Medium)
+                                Text("1d", modifier = Modifier.weight(1f), fontSize = 12.sp, textAlign = TextAlign.Center, color = Color.White, fontWeight = FontWeight.Medium)
+                            }
+                            Row(modifier = Modifier.weight(2f)) {
+                                Text("15m", modifier = Modifier.weight(1f), fontSize = 12.sp, textAlign = TextAlign.Center, color = Color.White, fontWeight = FontWeight.Medium)
+                                Text("1h", modifier = Modifier.weight(1f), fontSize = 12.sp, textAlign = TextAlign.Center, color = Color.White, fontWeight = FontWeight.Medium)
+                                Text("4h", modifier = Modifier.weight(1f), fontSize = 12.sp, textAlign = TextAlign.Center, color = Color.White, fontWeight = FontWeight.Medium)
+                                Text("1d", modifier = Modifier.weight(1f), fontSize = 12.sp, textAlign = TextAlign.Center, color = Color.White, fontWeight = FontWeight.Medium)
                             }
                         }
-                    },
-                    onRemove = {
-                        // 즐겨찾기에서 코인 삭제
+                    }
+                }
+            }
+
+            // ===== 코인별 지표 데이터 - 어두운 테마로 변경 =====
+            items(coinIndicators) { coin ->
+                CoinIndicatorRow(
+                    coin = coin,
+                    onRemoveClick = {
                         currentUser?.let { userData ->
                             val mongoService = MongoDbService()
                             mongoService.removeFavoriteCoin(userData.username, coin.symbol) { success: Boolean, message: String? ->
-                                scope.launch {
+                                scope.launch(Dispatchers.Main) {
                                     if (success) {
-                                        Toast.makeText(context, "코인이 삭제되었습니다", Toast.LENGTH_SHORT).show()
+                                        Toast.makeText(context, "코인이 제거되었습니다", Toast.LENGTH_SHORT).show()
                                         refreshFavoriteCoins()
                                     } else {
-                                        Toast.makeText(context, message ?: "삭제 실패", Toast.LENGTH_SHORT).show()
+                                        Toast.makeText(context, message ?: "제거 실패", Toast.LENGTH_SHORT).show()
                                     }
                                 }
                             }
@@ -312,207 +429,85 @@ fun PriceScreen(
             }
         }
     }
-
-    // 코인 추가 다이얼로그
-    if (showAddCoinDialog) {
-        AddCoinDialog(
-            onDismiss = { showAddCoinDialog = false },
-            onConfirm = { symbol ->
-                currentUser?.let { userData ->
-                    val mongoService = MongoDbService()
-                    mongoService.saveFavoriteCoin(userData.username, symbol) { success: Boolean, message: String? ->
-                        scope.launch {
-                            if (success) {
-                                Toast.makeText(context, "코인이 추가되었습니다", Toast.LENGTH_SHORT).show()
-                                refreshFavoriteCoins()
-                            } else {
-                                Toast.makeText(context, message ?: "추가 실패", Toast.LENGTH_SHORT).show()
-                            }
-                        }
-                    }
-                }
-                showAddCoinDialog = false
-            }
-        )
-    }
 }
 
-// ===== 코인 지표 카드 (기존 디자인 완전 유지) =====
+// ===== 코인 지표 행 컴포저블 - 어두운 테마로 변경 =====
 
 @Composable
-fun CoinIndicatorCard(
+fun CoinIndicatorRow(
     coin: CoinIndicatorInfo,
-    onRefresh: () -> Unit,
-    onRemove: () -> Unit
+    onRemoveClick: () -> Unit
 ) {
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onRefresh() },
+        modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
-            containerColor = Color(0xFFF0F4F8)
+            containerColor = Color.Black.copy(alpha = 0.4f)
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        shape = RoundedCornerShape(8.dp)
     ) {
         Column(
-            modifier = Modifier.padding(16.dp)
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp)
         ) {
-            // 헤더 (코인명 + 현재가 + 삭제 버튼)
+            // 코인 이름과 제거 버튼
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+                Column {
                     Text(
-                        getCoinEmoji(coin.symbol),
-                        fontSize = 20.sp
+                        coin.displayName,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Column {
-                        Text(
-                            coin.displayName,
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            coin.symbol,
-                            fontSize = 12.sp,
-                            color = Color(0xFF666666)
-                        )
-                    }
+                    Text(
+                        coin.symbol,
+                        fontSize = 10.sp,
+                        color = Color.Gray
+                    )
                 }
 
-                Row(
-                    verticalAlignment = Alignment.CenterVertically
+                IconButton(
+                    onClick = onRemoveClick,
+                    modifier = Modifier.size(24.dp)
                 ) {
-                    Column(
-                        horizontalAlignment = Alignment.End
-                    ) {
-                        if (coin.currentPrice > 0) {
-                            Text(
-                                "$${String.format("%.4f", coin.currentPrice)}",
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-
-                            val changeColor = if (coin.priceChange24h >= 0) {
-                                Color(0xFF4CAF50)
-                            } else {
-                                Color(0xFFF44336)
-                            }
-
-                            Text(
-                                "${if (coin.priceChange24h >= 0) "+" else ""}${String.format("%.2f", coin.priceChange24h)}%",
-                                fontSize = 12.sp,
-                                color = changeColor,
-                                fontWeight = FontWeight.Bold
-                            )
-                        } else {
-                            Text(
-                                "로딩중...",
-                                fontSize = 12.sp,
-                                color = Color(0xFF666666)
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.width(8.dp))
-
-                    // 삭제 버튼
-                    IconButton(
-                        onClick = onRemove,
-                        modifier = Modifier.size(32.dp)
-                    ) {
-                        Icon(
-                            Icons.Default.Close,
-                            contentDescription = "삭제",
-                            tint = Color(0xFFF44336),
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
+                    Icon(
+                        Icons.Default.Close,
+                        contentDescription = "제거",
+                        tint = Color(0xFFE57373),
+                        modifier = Modifier.size(16.dp)
+                    )
                 }
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // 지표 테이블 헤더
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    "",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.weight(0.8f),
-                    textAlign = TextAlign.Start
-                )
-                Text(
-                    "15분",
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF666666),
-                    modifier = Modifier.weight(1f),
-                    textAlign = TextAlign.Center
-                )
-                Text(
-                    "1시간",
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF666666),
-                    modifier = Modifier.weight(1f),
-                    textAlign = TextAlign.Center
-                )
-                Text(
-                    "4시간",
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF666666),
-                    modifier = Modifier.weight(1f),
-                    textAlign = TextAlign.Center
-                )
-                Text(
-                    "1일",
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF666666),
-                    modifier = Modifier.weight(1f),
-                    textAlign = TextAlign.Center
-                )
             }
 
             Spacer(modifier = Modifier.height(8.dp))
 
+            // 지표 테이블
             if (coin.isLoading) {
                 Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(60.dp),
+                    modifier = Modifier.fillMaxWidth(),
                     contentAlignment = Alignment.Center
                 ) {
                     CircularProgressIndicator(
                         modifier = Modifier.size(24.dp),
-                        color = Color(0xFF2196F3)
+                        color = Color(0xFFFFD700)
                     )
                 }
             } else {
                 // CCI 행
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
                         "CCI",
+                        modifier = Modifier.weight(1.2f),
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF2196F3),
-                        modifier = Modifier.weight(0.8f),
-                        textAlign = TextAlign.Start
+                        color = Color(0xFF81C784)
                     )
                     TableIndicatorCell(coin.min15?.cciValue, true, Modifier.weight(1f))
                     TableIndicatorCell(coin.hour1?.cciValue, true, Modifier.weight(1f))
@@ -525,16 +520,14 @@ fun CoinIndicatorCard(
                 // RSI 행
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
                         "RSI",
+                        modifier = Modifier.weight(1.2f),
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF4CAF50),
-                        modifier = Modifier.weight(0.8f),
-                        textAlign = TextAlign.Start
+                        color = Color(0xFFFFB74D)
                     )
                     TableIndicatorCell(coin.min15?.rsiValue, false, Modifier.weight(1f))
                     TableIndicatorCell(coin.hour1?.rsiValue, false, Modifier.weight(1f))
@@ -559,7 +552,7 @@ fun TableIndicatorCell(
     val displayValue: String
 
     if (value == null) {
-        backgroundColor = Color(0xFFEEEEEE)
+        backgroundColor = Color(0xFF424242)
         textColor = Color(0xFF999999)
         displayValue = "-"
     } else {
@@ -577,8 +570,8 @@ fun TableIndicatorCell(
                     textColor = Color.White
                 }
                 else -> {
-                    backgroundColor = Color(0xFFE0E0E0) // 회색 (중립)
-                    textColor = Color.Black
+                    backgroundColor = Color(0xFF616161) // 어두운 회색 (중립)
+                    textColor = Color.White
                 }
             }
         } else {
@@ -593,8 +586,8 @@ fun TableIndicatorCell(
                     textColor = Color.White
                 }
                 else -> {
-                    backgroundColor = Color(0xFFE0E0E0) // 회색 (중립)
-                    textColor = Color.Black
+                    backgroundColor = Color(0xFF616161) // 어두운 회색 (중립)
+                    textColor = Color.White
                 }
             }
         }
@@ -616,7 +609,7 @@ fun TableIndicatorCell(
     }
 }
 
-// ===== 코인 추가 다이얼로그 - 직접 입력 방식 =====
+// ===== 코인 추가 다이얼로그 - 어두운 테마로 변경 =====
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -630,407 +623,167 @@ fun AddCoinDialog(
     // 유효한 심볼인지 체크하는 함수
     fun validateSymbol(input: String): Boolean {
         if (input.isBlank()) return false
-        val symbol = input.uppercase().trim()
-        return symbol.matches(Regex("^[A-Z]{2,10}$")) // 2-10자의 영문 대문자만 허용
-    }
-
-    // 입력값을 USDT 심볼로 변환
-    fun convertToUSDTSymbol(input: String): String {
-        val cleanInput = input.uppercase().trim()
-        return if (cleanInput.endsWith("USDT")) {
-            cleanInput
-        } else {
-            "${cleanInput}USDT"
-        }
+        val pattern = "^[A-Z]{2,10}USDT$".toRegex()
+        return pattern.matches(input.uppercase())
     }
 
     AlertDialog(
         onDismissRequest = onDismiss,
+        containerColor = Color(0xFF1E1E1E),
         title = {
             Text(
                 "코인 추가",
-                fontWeight = FontWeight.Bold
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White
             )
         },
         text = {
             Column {
                 Text(
-                    "추가할 코인 심볼을 입력해주세요:",
+                    "추가할 코인의 심볼을 입력하세요\n(예: BTCUSDT, ETHUSDT)",
                     fontSize = 14.sp,
-                    color = Color(0xFF666666)
+                    color = Color.Gray
                 )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Text(
-                    "예시: BTC, ETH, BNB (USDT는 자동 추가)",
-                    fontSize = 12.sp,
-                    color = Color(0xFF999999)
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
+                Spacer(modifier = Modifier.height(12.dp))
                 OutlinedTextField(
                     value = inputText,
-                    onValueChange = { newValue ->
-                        inputText = newValue
-                        isValidSymbol = validateSymbol(newValue)
+                    onValueChange = {
+                        inputText = it.uppercase()
+                        isValidSymbol = validateSymbol(inputText)
                     },
-                    label = { Text("심볼 입력") },
-                    placeholder = { Text("BTC") },
-                    isError = !isValidSymbol && inputText.isNotEmpty(),
+                    label = { Text("코인 심볼", color = Color.Gray) },
+                    placeholder = { Text("BTCUSDT", color = Color.Gray) },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
+                    isError = !isValidSymbol && inputText.isNotBlank(),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = if (isValidSymbol) Color(0xFF2196F3) else Color.Red,
-                        focusedLabelColor = if (isValidSymbol) Color(0xFF2196F3) else Color.Red
+                        focusedBorderColor = Color(0xFFFFD700),
+                        unfocusedBorderColor = Color.Gray,
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White,
+                        cursorColor = Color(0xFFFFD700)
                     )
                 )
-
-                if (!isValidSymbol && inputText.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(4.dp))
+                if (!isValidSymbol && inputText.isNotBlank()) {
                     Text(
-                        "올바른 심볼을 입력해주세요 (영문 2-10자)",
+                        "올바른 형식이 아닙니다 (예: BTCUSDT)",
+                        color = Color(0xFFE57373),
                         fontSize = 12.sp,
-                        color = Color.Red
+                        modifier = Modifier.padding(top = 4.dp)
                     )
-                }
-
-                if (inputText.isNotEmpty() && isValidSymbol) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        "추가될 심볼: ${convertToUSDTSymbol(inputText)}",
-                        fontSize = 12.sp,
-                        color = Color(0xFF4CAF50),
-                        fontWeight = FontWeight.Medium
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // 빠른 선택 버튼들
-                Text(
-                    "빠른 선택:",
-                    fontSize = 12.sp,
-                    color = Color(0xFF666666),
-                    fontWeight = FontWeight.Medium
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    val quickSymbols = listOf("BTC", "ETH", "BNB", "XRP")
-                    quickSymbols.forEach { symbol ->
-                        OutlinedButton(
-                            onClick = { inputText = symbol },
-                            modifier = Modifier.weight(1f).height(36.dp),
-                            colors = ButtonDefaults.outlinedButtonColors(
-                                contentColor = Color(0xFF2196F3)
-                            ),
-                            contentPadding = PaddingValues(4.dp)
-                        ) {
-                            Text(
-                                symbol,
-                                fontSize = 11.sp,
-                                maxLines = 1
-                            )
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    val quickSymbols2 = listOf("ADA", "SOL", "DOT", "MATIC")
-                    quickSymbols2.forEach { symbol ->
-                        OutlinedButton(
-                            onClick = { inputText = symbol },
-                            modifier = Modifier.weight(1f).height(36.dp),
-                            colors = ButtonDefaults.outlinedButtonColors(
-                                contentColor = Color(0xFF2196F3)
-                            ),
-                            contentPadding = PaddingValues(4.dp)
-                        ) {
-                            Text(
-                                symbol,
-                                fontSize = 11.sp,
-                                maxLines = 1
-                            )
-                        }
-                    }
                 }
             }
         },
         confirmButton = {
-            TextButton(
+            Button(
                 onClick = {
-                    if (isValidSymbol && inputText.isNotEmpty()) {
-                        val finalSymbol = convertToUSDTSymbol(inputText)
-                        onConfirm(finalSymbol)
+                    if (isValidSymbol && inputText.isNotBlank()) {
+                        onConfirm(inputText.trim().uppercase())
                     }
                 },
-                enabled = isValidSymbol && inputText.isNotEmpty()
+                enabled = isValidSymbol && inputText.isNotBlank(),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFFFFD700),
+                    disabledContainerColor = Color.Gray
+                )
             ) {
-                Text("추가")
+                Text(
+                    "추가",
+                    color = Color.Black,
+                    fontWeight = FontWeight.Bold
+                )
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("취소")
+            TextButton(
+                onClick = onDismiss
+            ) {
+                Text(
+                    "취소",
+                    color = Color.Gray
+                )
             }
         }
     )
 }
 
-// ===== 유틸리티 함수들 (기존과 동일) =====
+// ===== 유틸리티 함수들 =====
 
-private fun getKoreanName(baseSymbol: String): String {
-    return when (baseSymbol.replace("USDT", "")) {
-        "BTC" -> "비트코인"
-        "ETH" -> "이더리움"
-        "BNB" -> "바이낸스코인"
-        "XRP" -> "리플"
-        "ADA" -> "에이다"
-        "DOGE" -> "도지코인"
-        "SOL" -> "솔라나"
-        "DOT" -> "폴카닷"
-        "MATIC" -> "폴리곤"
-        "LTC" -> "라이트코인"
-        "AVAX" -> "아발란체"
-        "LINK" -> "체인링크"
-        "UNI" -> "유니스왑"
-        "ATOM" -> "코스모스"
-        "FIL" -> "파일코인"
-        else -> baseSymbol
-    }
-}
+// ===== DAO 레이어를 사용한 지표 로드 =====
 
-private fun getCoinEmoji(symbol: String): String {
-    return when (symbol) {
-        "BTCUSDT" -> "₿"
-        "ETHUSDT" -> "Ξ"
-        "BNBUSDT" -> "🔶"
-        "XRPUSDT" -> "🌊"
-        "ADAUSDT" -> "💎"
-        "DOGEUSDT" -> "🐕"
-        "SOLUSDT" -> "☀️"
-        "DOTUSDT" -> "⚫"
-        "MATICUSDT" -> "🔷"
-        "LTCUSDT" -> "🥈"
-        "AVAXUSDT" -> "🏔️"
-        "LINKUSDT" -> "🔗"
-        "UNIUSDT" -> "🦄"
-        "ATOMUSDT" -> "⚛️"
-        "FILUSDT" -> "📁"
-        else -> "💰"
-    }
-}
-
-// 초기 코인 목록 (빈 목록으로 시작)
-private fun getInitialCoinList(): List<CoinIndicatorInfo> = emptyList()
-
-// 가격 및 지표 정보 새로고침 함수들 (기존과 동일)
-private suspend fun refreshIndicators(
-    coins: List<CoinIndicatorInfo>,
-    onUpdate: (List<CoinIndicatorInfo>) -> Unit
-) {
-    val updated = coins.map { coin ->
+suspend fun loadIndicatorsForCoin(symbol: String, onResult: (CoinIndicatorInfo) -> Unit) {
+    withContext(Dispatchers.IO) {
         try {
-            // 현재가격과 24시간 변동률 가져오기
-            val priceInfo = fetchCurrentPrice(coin.symbol)
+            // DAO 레이어 사용
+            val indicatorCalculator = TechnicalIndicatorCalculator()
 
-            // 실제 API 호출로 가격 데이터 가져오기
-            val priceData15m = fetchPriceData(coin.symbol, "15m")
-            val priceData1h = fetchPriceData(coin.symbol, "1h")
-            val priceData4h = fetchPriceData(coin.symbol, "4h")
-            val priceData1d = fetchPriceData(coin.symbol, "1d")
-
-            val cci15m = calculateCCI(priceData15m)
-            val rsi15m = calculateRSI(priceData15m, 7) // RSI 7 기간으로 복원
-            val cci1h = calculateCCI(priceData1h)
-            val rsi1h = calculateRSI(priceData1h, 7) // RSI 7 기간으로 복원
-            val cci4h = calculateCCI(priceData4h)
-            val rsi4h = calculateRSI(priceData4h, 7) // RSI 7 기간으로 복원
-            val cci1d = calculateCCI(priceData1d)
-            val rsi1d = calculateRSI(priceData1d, 7) // RSI 7 기간으로 복원
-
-            coin.copy(
-                currentPrice = priceInfo.first,
-                priceChange24h = priceInfo.second,
-                min15 = TechnicalIndicatorData(System.currentTimeMillis(), cci15m, rsi15m),
-                hour1 = TechnicalIndicatorData(System.currentTimeMillis(), cci1h, rsi1h),
-                hour4 = TechnicalIndicatorData(System.currentTimeMillis(), cci4h, rsi4h),
-                day1 = TechnicalIndicatorData(System.currentTimeMillis(), cci1d, rsi1d),
-                isLoading = false
+            // 모든 시간대의 지표를 한 번에 계산
+            val indicators = indicatorCalculator.calculateMultiTimeframeIndicators(
+                symbol = symbol,
+                timeframes = listOf("15m", "1h", "4h", "1d"),
+                cciPeriod = 20,
+                rsiPeriod = 7  // RSI 7일 유지
             )
-        } catch (e: Exception) {
-            coin.copy(isLoading = false)
-        }
-    }
-    onUpdate(updated)
-}
 
-private suspend fun refreshSingleCoin(
-    coin: CoinIndicatorInfo,
-    onUpdate: (CoinIndicatorInfo) -> Unit
-) {
-    try {
-        val priceInfo = fetchCurrentPrice(coin.symbol)
-
-        val priceData15m = fetchPriceData(coin.symbol, "15m")
-        val priceData1h = fetchPriceData(coin.symbol, "1h")
-        val priceData4h = fetchPriceData(coin.symbol, "4h")
-        val priceData1d = fetchPriceData(coin.symbol, "1d")
-
-        val cci15m = calculateCCI(priceData15m)
-        val rsi15m = calculateRSI(priceData15m, 7) // RSI 7 기간으로 복원
-        val cci1h = calculateCCI(priceData1h)
-        val rsi1h = calculateRSI(priceData1h, 7) // RSI 7 기간으로 복원
-        val cci4h = calculateCCI(priceData4h)
-        val rsi4h = calculateRSI(priceData4h, 7) // RSI 7 기간으로 복원
-        val cci1d = calculateCCI(priceData1d)
-        val rsi1d = calculateRSI(priceData1d, 7) // RSI 7 기간으로 복원
-
-        val updated = coin.copy(
-            currentPrice = priceInfo.first,
-            priceChange24h = priceInfo.second,
-            min15 = TechnicalIndicatorData(System.currentTimeMillis(), cci15m, rsi15m),
-            hour1 = TechnicalIndicatorData(System.currentTimeMillis(), cci1h, rsi1h),
-            hour4 = TechnicalIndicatorData(System.currentTimeMillis(), cci4h, rsi4h),
-            day1 = TechnicalIndicatorData(System.currentTimeMillis(), cci1d, rsi1d),
-            isLoading = false
-        )
-        onUpdate(updated)
-    } catch (e: Exception) {
-        onUpdate(coin.copy(isLoading = false))
-    }
-}
-
-// 가격 정보 가져오기 함수
-private suspend fun fetchCurrentPrice(symbol: String): Pair<Double, Double> {
-    return withContext(Dispatchers.IO) {
-        try {
-            val client = OkHttpClient()
-            val request = Request.Builder()
-                .url("https://api.binance.com/api/v3/ticker/24hr?symbol=$symbol")
-                .build()
-
-            val response = client.newCall(request).execute()
-            val jsonString = response.body?.string() ?: ""
-
-            // JSON 파싱 (간단한 방식)
-            val priceRegex = """"lastPrice":"([^"]+)"""".toRegex()
-            val changeRegex = """"priceChangePercent":"([^"]+)"""".toRegex()
-
-            val priceMatch = priceRegex.find(jsonString)
-            val changeMatch = changeRegex.find(jsonString)
-
-            val price = priceMatch?.groupValues?.get(1)?.toDoubleOrNull() ?: 0.0
-            val change = changeMatch?.groupValues?.get(1)?.toDoubleOrNull() ?: 0.0
-
-            Pair(price, change)
-        } catch (e: Exception) {
-            Pair(0.0, 0.0)
-        }
-    }
-}
-
-// 캔들 데이터 가져오기 함수 (개선된 버전)
-private suspend fun fetchPriceData(symbol: String, interval: String): List<Double> {
-    return withContext(Dispatchers.IO) {
-        try {
-            val client = OkHttpClient()
-            // limit을 50으로 늘려서 더 많은 데이터 확보
-            val request = Request.Builder()
-                .url("https://api.binance.com/api/v3/klines?symbol=$symbol&interval=$interval&limit=50")
-                .build()
-
-            val response = client.newCall(request).execute()
-            val jsonString = response.body?.string() ?: ""
-
-            // JSON 파싱으로 종가만 추출
-            val prices = mutableListOf<Double>()
-
-            // JSON 배열 파싱
-            val cleanJson = jsonString.trim()
-            if (cleanJson.startsWith("[") && cleanJson.endsWith("]")) {
-                val jsonContent = cleanJson.substring(1, cleanJson.length - 1)
-                val candleArrays = jsonContent.split("],[")
-
-                for (candleStr in candleArrays) {
-                    val cleanCandleStr = candleStr.replace("[", "").replace("]", "")
-                    val values = cleanCandleStr.split(",")
-
-                    if (values.size >= 5) {
-                        // 4번째 인덱스가 종가(close price)
-                        val closePrice = values[4].replace("\"", "").toDoubleOrNull()
-                        closePrice?.let { prices.add(it) }
-                    }
-                }
+            // IndicatorResult를 TechnicalIndicatorData로 변환
+            val convertedIndicators = mutableMapOf<String, TechnicalIndicatorData>()
+            indicators.forEach { (timeframe, result) ->
+                convertedIndicators[timeframe] = TechnicalIndicatorData(
+                    timestamp = result.timestamp,
+                    cciValue = result.cci,
+                    rsiValue = result.rsi
+                )
             }
 
-            prices
+            val updatedCoin = CoinIndicatorInfo(
+                symbol = symbol,
+                displayName = formatDisplayName(symbol),
+                min15 = convertedIndicators["15m"],
+                hour1 = convertedIndicators["1h"],
+                hour4 = convertedIndicators["4h"],
+                day1 = convertedIndicators["1d"],
+                isLoading = false
+            )
+
+            Log.d("PriceScreen", "DAO로 지표 계산 완료: $symbol")
+            onResult(updatedCoin)
+
         } catch (e: Exception) {
-            emptyList()
+            Log.e("PriceScreen", "DAO 지표 계산 실패: ${e.message}")
+            // 전체 로드 실패 시
+            val errorCoin = CoinIndicatorInfo(
+                symbol = symbol,
+                displayName = formatDisplayName(symbol),
+                min15 = null,
+                hour1 = null,
+                hour4 = null,
+                day1 = null,
+                isLoading = false
+            )
+            onResult(errorCoin)
         }
     }
 }
 
-// CCI 계산 함수
-private fun calculateCCI(prices: List<Double>, period: Int = 20): Double {
-    if (prices.size < period) return 0.0
+// 기존 계산 함수들은 DAO로 이동되어 제거됨
 
-    val recentPrices = prices.takeLast(period)
-    val sma = recentPrices.average()
-    val meanDeviation = recentPrices.map { abs(it - sma) }.average()
-
-    val currentPrice = prices.last()
-    return if (meanDeviation != 0.0) {
-        (currentPrice - sma) / (0.015 * meanDeviation)
-    } else {
-        0.0
+fun formatDisplayName(symbol: String): String {
+    return when {
+        symbol.startsWith("BTC") -> "비트코인"
+        symbol.startsWith("ETH") -> "이더리움"
+        symbol.startsWith("BNB") -> "바이낸스코인"
+        symbol.startsWith("ADA") -> "에이다"
+        symbol.startsWith("SOL") -> "솔라나"
+        symbol.startsWith("XRP") -> "리플"
+        symbol.startsWith("DOT") -> "폴카닷"
+        symbol.startsWith("DOGE") -> "도지코인"
+        symbol.startsWith("AVAX") -> "아발란체"
+        symbol.startsWith("MATIC") -> "폴리곤"
+        else -> symbol.replace("USDT", "")
     }
 }
 
-// RSI 계산 함수 (정확한 표준 공식)
-private fun calculateRSI(prices: List<Double>, period: Int = 14): Double {
-    if (prices.size < period + 1) return 50.0
-
-    // 가격 변화량 계산
-    val priceChanges = mutableListOf<Double>()
-    for (i in 1 until prices.size) {
-        priceChanges.add(prices[i] - prices[i - 1])
-    }
-
-    if (priceChanges.size < period) return 50.0
-
-    // 첫 번째 RS 계산 (단순 평균 방식)
-    val firstPeriodChanges = priceChanges.take(period)
-    var avgGain = firstPeriodChanges.filter { it > 0 }.average().takeIf { !it.isNaN() } ?: 0.0
-    var avgLoss = firstPeriodChanges.filter { it < 0 }.map { -it }.average().takeIf { !it.isNaN() } ?: 0.0
-
-    // 이후 값들은 지수 이동평균 방식으로 계산
-    for (i in period until priceChanges.size) {
-        val change = priceChanges[i]
-        val gain = if (change > 0) change else 0.0
-        val loss = if (change < 0) -change else 0.0
-
-        // Wilder's smoothing (지수 이동평균)
-        avgGain = (avgGain * (period - 1) + gain) / period
-        avgLoss = (avgLoss * (period - 1) + loss) / period
-    }
-
-    // RSI 계산
-    return if (avgLoss == 0.0) {
-        100.0
-    } else {
-        val rs = avgGain / avgLoss
-        100.0 - (100.0 / (1.0 + rs))
-    }
+fun getInitialCoinList(): List<CoinIndicatorInfo> {
+    return emptyList()
 }
