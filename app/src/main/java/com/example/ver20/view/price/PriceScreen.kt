@@ -363,20 +363,12 @@ fun PriceScreen(
                                 color = Color.White
                             )
                             Text(
-                                "CCI",
+                                "CCI / RSI",
                                 modifier = Modifier.weight(2f),
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold,
                                 textAlign = TextAlign.Center,
                                 color = Color(0xFFFFD700)  // 골드색으로 변경
-                            )
-                            Text(
-                                "RSI",
-                                modifier = Modifier.weight(2f),
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                textAlign = TextAlign.Center,
-                                color = Color(0xFFC0C0C0)  // 실버색으로 변경
                             )
                         }
 
@@ -393,12 +385,6 @@ fun PriceScreen(
                                 Text("1h", modifier = Modifier.weight(1f), fontSize = 12.sp, textAlign = TextAlign.Center, color = Color(0xFFFFD700), fontWeight = FontWeight.Medium)
                                 Text("4h", modifier = Modifier.weight(1f), fontSize = 12.sp, textAlign = TextAlign.Center, color = Color(0xFFFFD700), fontWeight = FontWeight.Medium)
                                 Text("1d", modifier = Modifier.weight(1f), fontSize = 12.sp, textAlign = TextAlign.Center, color = Color(0xFFFFD700), fontWeight = FontWeight.Medium)
-                            }
-                            Row(modifier = Modifier.weight(2f)) {
-                                Text("15m", modifier = Modifier.weight(1f), fontSize = 12.sp, textAlign = TextAlign.Center, color = Color(0xFFC0C0C0), fontWeight = FontWeight.Medium)
-                                Text("1h", modifier = Modifier.weight(1f), fontSize = 12.sp, textAlign = TextAlign.Center, color = Color(0xFFC0C0C0), fontWeight = FontWeight.Medium)
-                                Text("4h", modifier = Modifier.weight(1f), fontSize = 12.sp, textAlign = TextAlign.Center, color = Color(0xFFC0C0C0), fontWeight = FontWeight.Medium)
-                                Text("1d", modifier = Modifier.weight(1f), fontSize = 12.sp, textAlign = TextAlign.Center, color = Color(0xFFC0C0C0), fontWeight = FontWeight.Medium)
                             }
                         }
                     }
