@@ -609,7 +609,7 @@ fun TableIndicatorCell(
     }
 }
 
-// ===== 코인 추가 다이얼로그 - 어두운 테마로 변경 =====
+// ===== 코인 추가 다이얼로그 - UX 개선 버전 =====
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -620,11 +620,33 @@ fun AddCoinDialog(
     var inputText by remember { mutableStateOf("") }
     var isValidSymbol by remember { mutableStateOf(true) }
 
-    // 유효한 심볼인지 체크하는 함수
+    // 유효한 심볼인지 체크하는 함수 (더 유연하게)
     fun validateSymbol(input: String): Boolean {
         if (input.isBlank()) return false
+
+        // BTC, ETH 같은 짧은 입력도 허용
+        val trimmedInput = input.trim().uppercase()
+
+        // 이미 USDT가 붙어있으면 그대로, 없으면 추가해서 검증
+        val symbolToCheck = if (trimmedInput.endsWith("USDT")) {
+            trimmedInput
+        } else {
+            "${trimmedInput}USDT"
+        }
+
+        // USDT 페어 패턴 검증
         val pattern = "^[A-Z]{2,10}USDT$".toRegex()
-        return pattern.matches(input.uppercase())
+        return pattern.matches(symbolToCheck)
+    }
+
+    // 입력값을 USDT 심볼로 변환
+    fun convertToUSDTSymbol(input: String): String {
+        val trimmedInput = input.trim().uppercase()
+        return if (trimmedInput.endsWith("USDT")) {
+            trimmedInput
+        } else {
+            "${trimmedInput}USDT"
+        }
     }
 
     AlertDialog(
@@ -641,37 +663,97 @@ fun AddCoinDialog(
         text = {
             Column {
                 Text(
-                    "추가할 코인의 심볼을 입력하세요\n(예: BTCUSDT, ETHUSDT)",
+                    "코인 심볼을 입력하세요\n(예: BTC, ETH, BTCUSDT)",
                     fontSize = 14.sp,
                     color = Color.Gray
                 )
                 Spacer(modifier = Modifier.height(12.dp))
+
                 OutlinedTextField(
                     value = inputText,
                     onValueChange = {
                         inputText = it.uppercase()
                         isValidSymbol = validateSymbol(inputText)
                     },
-                    label = { Text("코인 심볼", color = Color.Gray) },
-                    placeholder = { Text("BTCUSDT", color = Color.Gray) },
+                    label = {
+                        Text("코인 심볼", color = Color.Gray)
+                    },
+                    placeholder = {
+                        Text("BTC 또는 BTCUSDT", color = Color.Gray)
+                    },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     isError = !isValidSymbol && inputText.isNotBlank(),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = Color(0xFFFFD700),
                         unfocusedBorderColor = Color.Gray,
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White,
-                        cursorColor = Color(0xFFFFD700)
+                        focusedTextColor = Color.White,        // 입력 글자 색상
+                        unfocusedTextColor = Color.White,      // 입력 글자 색상
+                        cursorColor = Color(0xFFFFD700),
+                        focusedLabelColor = Color(0xFFFFD700),
+                        unfocusedLabelColor = Color.Gray
                     )
                 )
+
+                // 변환 미리보기
+                if (inputText.isNotBlank() && isValidSymbol) {
+                    val finalSymbol = convertToUSDTSymbol(inputText)
+                    if (finalSymbol != inputText.uppercase()) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            "→ $finalSymbol 로 추가됩니다",
+                            color = Color(0xFFFFD700),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+
                 if (!isValidSymbol && inputText.isNotBlank()) {
                     Text(
-                        "올바른 형식이 아닙니다 (예: BTCUSDT)",
+                        "올바른 형식이 아닙니다 (예: BTC, BTCUSDT)",
                         color = Color(0xFFE57373),
                         fontSize = 12.sp,
                         modifier = Modifier.padding(top = 4.dp)
                     )
+                }
+
+                // 인기 코인 빠른 선택
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    "빠른 선택:",
+                    color = Color.Gray,
+                    fontSize = 12.sp
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    val popularCoins = listOf("BTC", "ETH", "BNB", "SOL")
+                    popularCoins.forEach { coin ->
+                        Card(
+                            modifier = Modifier
+                                .clickable {
+                                    inputText = coin
+                                    isValidSymbol = true
+                                },
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (inputText.uppercase() == coin)
+                                    Color(0xFFFFD700) else Color(0xFF2D2D2D)
+                            )
+                        ) {
+                            Text(
+                                coin,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                color = if (inputText.uppercase() == coin)
+                                    Color.Black else Color.White,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
                 }
             }
         },
@@ -679,7 +761,8 @@ fun AddCoinDialog(
             Button(
                 onClick = {
                     if (isValidSymbol && inputText.isNotBlank()) {
-                        onConfirm(inputText.trim().uppercase())
+                        val finalSymbol = convertToUSDTSymbol(inputText)
+                        onConfirm(finalSymbol)
                     }
                 },
                 enabled = isValidSymbol && inputText.isNotBlank(),
