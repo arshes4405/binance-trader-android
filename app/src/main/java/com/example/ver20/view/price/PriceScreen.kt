@@ -462,20 +462,25 @@ fun CoinIndicatorRow(
 
                 // 중간: 가격 및 변동률
                 if (coin.currentPrice > 0) {
-                    Column(
-                        horizontalAlignment = Alignment.End
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Text(
                             text = DecimalFormat("#,##0.##").format(coin.currentPrice),
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color.White
+                            color = Color(0xFF64B5F6), // 연한 파란색
+                            textAlign = TextAlign.End,
+                            modifier = Modifier.width(80.dp)
                         )
                         Text(
                             text = "${if (coin.changePercent >= 0) "+" else ""}${DecimalFormat("#0.00").format(coin.changePercent)}%",
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Medium,
-                            color = if (coin.changePercent >= 0) Color(0xFF4CAF50) else Color(0xFFF44336)
+                            color = if (coin.changePercent >= 0) Color(0xFF4CAF50) else Color(0xFFF44336),
+                            textAlign = TextAlign.End,
+                            modifier = Modifier.width(60.dp)
                         )
                     }
                 }
