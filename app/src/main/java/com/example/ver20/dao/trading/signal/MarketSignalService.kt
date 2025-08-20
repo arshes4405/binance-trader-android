@@ -1,4 +1,4 @@
-// MarketSignalService.kt - 안드로이드 앱용 간소화 버전 (UI 및 설정 관리만)
+// MarketSignalService.kt - 안드로이드 앱용 완성된 버전
 
 package com.example.ver20.dao.trading.signal
 
@@ -9,6 +9,13 @@ import retrofit2.Response
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.*
+
+// API 응답 데이터 클래스
+data class MarketSignalApiResponse(
+    val success: Boolean,
+    val message: String?,
+    val data: Any? = null
+)
 
 // MongoDB API 인터페이스 (설정 및 신호 조회용)
 interface MarketSignalApi {
@@ -21,9 +28,17 @@ interface MarketSignalApi {
         @Query("symbol") symbol: String,
         @Query("timeframe") timeframe: String,
         @Query("checkInterval") checkInterval: Int,
-        @Query("cciPeriod") cciPeriod: Int,
-        @Query("cciBreakoutValue") cciBreakoutValue: Double,
-        @Query("cciEntryValue") cciEntryValue: Double,
+        @Query("cciPeriod") cciPeriod: Int = 20,
+        @Query("cciBreakoutValue") cciBreakoutValue: Double = 100.0,
+        @Query("cciEntryValue") cciEntryValue: Double = 90.0,
+        @Query("rsiPeriod") rsiPeriod: Int = 14,
+        @Query("rsiOverbought") rsiOverbought: Double = 70.0,
+        @Query("rsiOversold") rsiOversold: Double = 30.0,
+        @Query("cortaFastMa") cortaFastMa: Int = 12,
+        @Query("cortaSlowMa") cortaSlowMa: Int = 26,
+        @Query("cortaSignalLine") cortaSignalLine: Int = 9,
+        @Query("cortaVolumeFactor") cortaVolumeFactor: Double = 1.5,
+        @Query("cortaRsiConfirm") cortaRsiConfirm: Boolean = true,
         @Query("seedMoney") seedMoney: Double,
         @Query("isActive") isActive: Boolean,
         @Query("autoTrading") autoTrading: Boolean
@@ -93,6 +108,14 @@ class MarketSignalService {
             cciPeriod = config.cciPeriod,
             cciBreakoutValue = config.cciBreakoutValue,
             cciEntryValue = config.cciEntryValue,
+            rsiPeriod = config.rsiPeriod,
+            rsiOverbought = config.rsiOverbought,
+            rsiOversold = config.rsiOversold,
+            cortaFastMa = config.cortaFastMa,
+            cortaSlowMa = config.cortaSlowMa,
+            cortaSignalLine = config.cortaSignalLine,
+            cortaVolumeFactor = config.cortaVolumeFactor,
+            cortaRsiConfirm = config.cortaRsiConfirm,
             seedMoney = config.seedMoney,
             isActive = config.isActive,
             autoTrading = config.autoTrading
@@ -151,10 +174,21 @@ class MarketSignalService {
                                                 checkInterval = (dataMap["checkInterval"] as? Number)?.toInt() ?: 15,
                                                 isActive = dataMap["isActive"] as? Boolean ?: true,
                                                 autoTrading = dataMap["autoTrading"] as? Boolean ?: false,
+                                                seedMoney = (dataMap["seedMoney"] as? Number)?.toDouble() ?: 1000.0,
+                                                // CCI 설정
                                                 cciPeriod = (dataMap["cciPeriod"] as? Number)?.toInt() ?: 20,
                                                 cciBreakoutValue = (dataMap["cciBreakoutValue"] as? Number)?.toDouble() ?: 100.0,
                                                 cciEntryValue = (dataMap["cciEntryValue"] as? Number)?.toDouble() ?: 90.0,
-                                                seedMoney = (dataMap["seedMoney"] as? Number)?.toDouble() ?: 1000.0,
+                                                // RSI 설정
+                                                rsiPeriod = (dataMap["rsiPeriod"] as? Number)?.toInt() ?: 14,
+                                                rsiOverbought = (dataMap["rsiOverbought"] as? Number)?.toDouble() ?: 70.0,
+                                                rsiOversold = (dataMap["rsiOversold"] as? Number)?.toDouble() ?: 30.0,
+                                                // 코르타 설정
+                                                cortaFastMa = (dataMap["cortaFastMa"] as? Number)?.toInt() ?: 12,
+                                                cortaSlowMa = (dataMap["cortaSlowMa"] as? Number)?.toInt() ?: 26,
+                                                cortaSignalLine = (dataMap["cortaSignalLine"] as? Number)?.toInt() ?: 9,
+                                                cortaVolumeFactor = (dataMap["cortaVolumeFactor"] as? Number)?.toDouble() ?: 1.5,
+                                                cortaRsiConfirm = dataMap["cortaRsiConfirm"] as? Boolean ?: true,
                                                 createdAt = dataMap["createdAt"]?.toString() ?: ""
                                             )
                                         } else null
@@ -217,10 +251,8 @@ class MarketSignalService {
             })
     }
 
-    // ===== 시세포착 신호 조회 (표시용) =====
-
     /**
-     * 시세포착 신호 조회 (UI 표시용)
+     * 시세포착 신호 조회 (표시용)
      */
     fun getSignals(
         username: String,
@@ -248,18 +280,29 @@ class MarketSignalService {
                                                 configId = dataMap["configId"]?.toString() ?: "",
                                                 username = dataMap["username"]?.toString() ?: "",
                                                 symbol = dataMap["symbol"]?.toString() ?: "",
-                                                signalType = dataMap["signalType"]?.toString() ?: "CCI",
+                                                signalType = dataMap["signalType"]?.toString() ?: "",
                                                 direction = dataMap["direction"]?.toString() ?: "",
                                                 timestamp = (dataMap["timestamp"] as? Number)?.toLong() ?: System.currentTimeMillis(),
                                                 price = (dataMap["price"] as? Number)?.toDouble() ?: 0.0,
                                                 volume = (dataMap["volume"] as? Number)?.toDouble() ?: 0.0,
-                                                cciValue = (dataMap["cciValue"] as? Number)?.toDouble() ?: 0.0,
-                                                cciBreakoutValue = (dataMap["cciBreakoutValue"] as? Number)?.toDouble() ?: 0.0,
-                                                cciEntryValue = (dataMap["cciEntryValue"] as? Number)?.toDouble() ?: 0.0,
                                                 reason = dataMap["reason"]?.toString() ?: "",
                                                 timeframe = dataMap["timeframe"]?.toString() ?: "",
                                                 status = dataMap["status"]?.toString() ?: "ACTIVE",
-                                                isRead = dataMap["isRead"] as? Boolean ?: false
+                                                isRead = dataMap["isRead"] as? Boolean ?: false,
+                                                // CCI 관련
+                                                cciValue = (dataMap["cciValue"] as? Number)?.toDouble() ?: 0.0,
+                                                cciBreakoutValue = (dataMap["cciBreakoutValue"] as? Number)?.toDouble() ?: 0.0,
+                                                cciEntryValue = (dataMap["cciEntryValue"] as? Number)?.toDouble() ?: 0.0,
+                                                // RSI 관련
+                                                rsiValue = (dataMap["rsiValue"] as? Number)?.toDouble() ?: 0.0,
+                                                rsiOverbought = (dataMap["rsiOverbought"] as? Number)?.toDouble() ?: 0.0,
+                                                rsiOversold = (dataMap["rsiOversold"] as? Number)?.toDouble() ?: 0.0,
+                                                // 코르타 관련
+                                                cortaMacdLine = (dataMap["cortaMacdLine"] as? Number)?.toDouble() ?: 0.0,
+                                                cortaSignalLine = (dataMap["cortaSignalLine"] as? Number)?.toDouble() ?: 0.0,
+                                                cortaHistogram = (dataMap["cortaHistogram"] as? Number)?.toDouble() ?: 0.0,
+                                                cortaVolumeRatio = (dataMap["cortaVolumeRatio"] as? Number)?.toDouble() ?: 0.0,
+                                                cortaRsiConfirm = (dataMap["cortaRsiConfirm"] as? Number)?.toDouble() ?: 0.0
                                             )
                                         } else null
                                     }
@@ -283,7 +326,7 @@ class MarketSignalService {
                 }
 
                 override fun onFailure(call: Call<MarketSignalApiResponse>, t: Throwable) {
-                    Log.e(TAG, "신고 조회 네트워크 오류: ${t.message}")
+                    Log.e(TAG, "신호 조회 네트워크 오류: ${t.message}")
                     callback(null, "네트워크 오류: ${t.message}")
                 }
             })
@@ -296,7 +339,7 @@ class MarketSignalService {
         signalId: String,
         callback: (Boolean, String?) -> Unit
     ) {
-        Log.d(TAG, "신호 읽음 처리: $signalId")
+        Log.d(TAG, "신호 읽음 처리 요청: $signalId")
 
         api.markSignalAsRead(signalId = signalId)
             .enqueue(object : Callback<MarketSignalApiResponse> {
@@ -306,13 +349,16 @@ class MarketSignalService {
                 ) {
                     if (response.isSuccessful) {
                         val result = response.body()
+                        Log.d(TAG, "신호 읽음 처리 응답: ${result?.success}")
                         callback(result?.success == true, result?.message)
                     } else {
+                        Log.e(TAG, "신호 읽음 처리 HTTP 오류: ${response.code()}")
                         callback(false, "서버 오류: ${response.code()}")
                     }
                 }
 
                 override fun onFailure(call: Call<MarketSignalApiResponse>, t: Throwable) {
+                    Log.e(TAG, "신호 읽음 처리 네트워크 오류: ${t.message}")
                     callback(false, "네트워크 오류: ${t.message}")
                 }
             })
