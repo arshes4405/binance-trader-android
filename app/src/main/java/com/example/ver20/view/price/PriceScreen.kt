@@ -32,6 +32,7 @@ import okhttp3.Request
 import kotlin.math.abs
 import com.example.ver20.dao.trading.indicator.TechnicalIndicatorCalculator
 import com.example.ver20.dao.trading.indicator.IndicatorResult
+import java.text.DecimalFormat
 
 // ===== 데이터 모델 =====
 
@@ -419,6 +420,8 @@ fun PriceScreen(
 
 // ===== 코인 지표 행 컴포저블 - 어두운 테마로 변경 =====
 
+// ===== 코인 지표 행 컴포저블 - 가격/변동률 추가 =====
+
 @Composable
 fun CoinIndicatorRow(
     coin: CoinIndicatorInfo,
@@ -436,12 +439,13 @@ fun CoinIndicatorRow(
                 .fillMaxWidth()
                 .padding(12.dp)
         ) {
-            // 코인 이름과 제거 버튼
+            // 코인 이름, 가격, 변동률 및 제거 버튼
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                // 왼쪽: 코인 정보
                 Column {
                     Text(
                         coin.displayName,
@@ -456,6 +460,27 @@ fun CoinIndicatorRow(
                     )
                 }
 
+                // 중간: 가격 및 변동률
+                if (coin.currentPrice > 0) {
+                    Column(
+                        horizontalAlignment = Alignment.End
+                    ) {
+                        Text(
+                            text = DecimalFormat("#,##0.##").format(coin.currentPrice),
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                        Text(
+                            text = "${if (coin.changePercent >= 0) "+" else ""}${DecimalFormat("#0.00").format(coin.changePercent)}%",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = if (coin.changePercent >= 0) Color(0xFF4CAF50) else Color(0xFFF44336)
+                        )
+                    }
+                }
+
+                // 오른쪽: 제거 버튼
                 IconButton(
                     onClick = onRemoveClick,
                     modifier = Modifier.size(24.dp)
