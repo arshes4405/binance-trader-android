@@ -2,6 +2,7 @@
 
 package com.example.ver20.view.signal
 
+import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -85,9 +86,24 @@ fun CompactMarketSignalScreen(modifier: Modifier = Modifier) {
                     onClick = {
                         configToDelete?.let { config ->
                             coroutineScope.launch {
-                                marketSignalService.deleteSignalConfig(config.id) { success, _ ->
+                                // 올바른 ID 사용 (configId가 있으면 configId, 없으면 id)
+                                val deleteId = if (config.configId.isNotBlank()) config.configId else config.id
+
+                                Log.d("MarketSignalScreen", "🗑️ 삭제 요청")
+                                Log.d("MarketSignalScreen", "   - Config ID: ${config.id}")
+                                Log.d("MarketSignalScreen", "   - Server ConfigId: ${config.configId}")
+                                Log.d("MarketSignalScreen", "   - 사용할 DeleteId: $deleteId")
+                                Log.d("MarketSignalScreen", "   - Symbol: ${config.symbol}")
+
+                                marketSignalService.deleteSignalConfig(deleteId) { success, message ->
+                                    Log.d("MarketSignalScreen", "🔄 삭제 결과: $success")
+                                    Log.d("MarketSignalScreen", "📝 메시지: $message")
+
                                     if (success) {
+                                        Log.d("MarketSignalScreen", "✅ 삭제 성공 - 데이터 새로고침")
                                         loadData()
+                                    } else {
+                                        Log.e("MarketSignalScreen", "❌ 삭제 실패: $message")
                                     }
                                     showDeleteDialog = false
                                     configToDelete = null
@@ -587,8 +603,9 @@ private fun SignalConfigCard(
                         )
                     )
 
+// 수정된 코드 (onDelete 콜백 사용)
                     IconButton(
-                        onClick = { onDelete(config) },
+                        onClick = { onDelete(config) },  // <- 이렇게 수정!
                         modifier = Modifier.size(36.dp)
                     ) {
                         Icon(
