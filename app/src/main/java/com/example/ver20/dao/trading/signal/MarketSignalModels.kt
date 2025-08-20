@@ -12,6 +12,7 @@ import java.util.*
  */
 data class MarketSignalConfig(
     val id: String = UUID.randomUUID().toString(),
+    val configId: String = "", // 서버에서 생성되는 실제 설정 ID
     val username: String,
     val signalType: String, // "RSI", "CCI", "CORTA"
     val symbol: String,

@@ -167,6 +167,7 @@ class MarketSignalService {
                                             val dataMap = item as Map<String, Any>
                                             MarketSignalConfig(
                                                 id = dataMap["_id"]?.toString() ?: "",
+                                                configId = dataMap["configId"]?.toString() ?: "", // 이 줄을 추가!
                                                 username = dataMap["username"]?.toString() ?: "",
                                                 signalType = dataMap["signalType"]?.toString() ?: "CCI",
                                                 symbol = dataMap["symbol"]?.toString() ?: "",
@@ -219,14 +220,25 @@ class MarketSignalService {
             })
     }
 
+// MarketSignalService.kt - 삭제 기능 개선
+
     /**
-     * 시세포착 설정 삭제
+     * 시세포착 설정 삭제 (기존 함수 개선)
+     * - 기존 코드 구조 유지하면서 로깅만 강화
      */
     fun deleteSignalConfig(
         configId: String,
         callback: (Boolean, String?) -> Unit
     ) {
+        // configId 유효성 검증 추가
+        if (configId.isBlank()) {
+            Log.e(TAG, "❌ configId가 비어있음")
+            callback(false, "설정 ID가 올바르지 않습니다")
+            return
+        }
+
         Log.d(TAG, "설정 삭제 요청: $configId")
+        Log.d(TAG, "🗑️ API URL: ${baseUrl}api?action=deleteSignalConfig&configId=$configId")
 
         api.deleteSignalConfig(configId = configId)
             .enqueue(object : Callback<MarketSignalApiResponse> {
@@ -234,21 +246,112 @@ class MarketSignalService {
                     call: Call<MarketSignalApiResponse>,
                     response: Response<MarketSignalApiResponse>
                 ) {
+                    Log.d(TAG, "📡 삭제 응답 수신 - HTTP: ${response.code()}")
+                    Log.d(TAG, "🔗 요청 URL: ${call.request().url}")
+
                     if (response.isSuccessful) {
                         val result = response.body()
                         Log.d(TAG, "설정 삭제 응답: ${result?.success}")
-                        callback(result?.success == true, result?.message)
+                        Log.d(TAG, "응답 메시지: ${result?.message}")
+
+                        if (result?.success == true) {
+                            Log.d(TAG, "✅ 설정 삭제 성공!")
+                            callback(true, result.message ?: "설정이 삭제되었습니다")
+                        } else {
+                            Log.e(TAG, "❌ 설정 삭제 실패: ${result?.message}")
+                            callback(false, result?.message ?: "설정 삭제에 실패했습니다")
+                        }
                     } else {
+                        val errorBody = response.errorBody()?.string()
                         Log.e(TAG, "설정 삭제 HTTP 오류: ${response.code()}")
-                        callback(false, "서버 오류: ${response.code()}")
+                        Log.e(TAG, "오류 상세: $errorBody")
+
+                        val errorMessage = when (response.code()) {
+                            400 -> "잘못된 요청 (configId: $configId)"
+                            404 -> "설정을 찾을 수 없습니다"
+                            500 -> "서버 내부 오류"
+                            else -> "서버 오류: ${response.code()}"
+                        }
+                        callback(false, errorMessage)
                     }
                 }
 
                 override fun onFailure(call: Call<MarketSignalApiResponse>, t: Throwable) {
                     Log.e(TAG, "설정 삭제 네트워크 오류: ${t.message}")
-                    callback(false, "네트워크 오류: ${t.message}")
+                    Log.e(TAG, "오류 타입: ${t.javaClass.simpleName}")
+                    t.printStackTrace()
+
+                    val errorMessage = when (t) {
+                        is java.net.SocketTimeoutException -> "요청 시간 초과"
+                        is java.net.UnknownHostException -> "서버 연결 실패"
+                        else -> "네트워크 오류: ${t.message}"
+                    }
+                    callback(false, errorMessage)
                 }
             })
+    }
+
+
+    /**
+     * 삭제 전 configId 유효성 및 존재 여부 확인
+     */
+    fun validateConfigBeforeDelete(
+        configId: String,
+        username: String,
+        callback: (Boolean, String?) -> Unit
+    ) {
+        Log.d(TAG, "🔍 삭제 전 설정 존재 여부 확인")
+
+        getSignalConfigs(username) { configs, error ->
+            if (configs != null) {
+                val configExists = configs.any { it.configId == configId }
+                if (configExists) {
+                    Log.d(TAG, "✅ 삭제할 설정 존재 확인됨")
+                    callback(true, "설정 존재")
+                } else {
+                    Log.e(TAG, "❌ 삭제할 설정이 존재하지 않음")
+                    callback(false, "삭제할 설정을 찾을 수 없습니다")
+                }
+            } else {
+                Log.e(TAG, "❌ 설정 목록 조회 실패: $error")
+                callback(false, "설정 확인 중 오류 발생: $error")
+            }
+        }
+    }
+
+    /**
+     * 안전한 삭제 (유효성 검증 후 삭제)
+     */
+    fun safeDeleteSignalConfig(
+        configId: String,
+        username: String,
+        callback: (Boolean, String?) -> Unit
+    ) {
+        Log.d(TAG, "🛡️ 안전한 삭제 시작")
+
+        // 1단계: 설정 존재 여부 확인
+        validateConfigBeforeDelete(configId, username) { isValid, message ->
+            if (isValid) {
+                // 2단계: 실제 삭제 실행
+                deleteSignalConfig(configId, callback)
+            } else {
+                // 유효성 검증 실패
+                callback(false, message)
+            }
+        }
+    }
+
+    // 테스트용 함수 - 개발 단계에서만 사용
+    fun testDeleteApi(configId: String) {
+        Log.d(TAG, "🧪 DELETE API 테스트")
+        Log.d(TAG, "   - Base URL: $baseUrl")
+        Log.d(TAG, "   - ConfigId: $configId")
+
+        val testUrl = "${baseUrl}api?action=deleteSignalConfig&configId=${configId}"
+        Log.d(TAG, "   - 완전한 URL: $testUrl")
+
+        // 실제 삭제는 하지 않고 URL만 확인
+        Log.d(TAG, "💡 브라우저에서 위 URL을 직접 테스트해보세요")
     }
 
     /**

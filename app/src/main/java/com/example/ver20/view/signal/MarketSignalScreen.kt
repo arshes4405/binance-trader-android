@@ -43,6 +43,8 @@ fun CompactMarketSignalScreen(modifier: Modifier = Modifier) {
     var recentSignals by remember { mutableStateOf<List<MarketSignal>>(emptyList()) }
     var isLoading by remember { mutableStateOf(false) }
     var selectedConfig by remember { mutableStateOf<MarketSignalConfig?>(null) }
+    var showDeleteDialog by remember { mutableStateOf(false) }
+    var configToDelete by remember { mutableStateOf<MarketSignalConfig?>(null) }
 
     // 데이터 로드 함수
     fun loadData() {
@@ -56,6 +58,67 @@ fun CompactMarketSignalScreen(modifier: Modifier = Modifier) {
                 }
             }
         }
+    }
+
+    // 삭제 확인 다이얼로그
+    if (showDeleteDialog && configToDelete != null) {
+        AlertDialog(
+            onDismissRequest = {
+                showDeleteDialog = false
+                configToDelete = null
+            },
+            title = {
+                Text(
+                    text = "설정 삭제",
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Text(
+                    text = "${configToDelete!!.signalType} ${configToDelete!!.symbol.replace("USDT", "")} 설정을 삭제하시겠습니까?",
+                    color = Color.White
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        configToDelete?.let { config ->
+                            coroutineScope.launch {
+                                marketSignalService.deleteSignalConfig(config.id) { success, _ ->
+                                    if (success) {
+                                        loadData()
+                                    }
+                                    showDeleteDialog = false
+                                    configToDelete = null
+                                }
+                            }
+                        }
+                    }
+                ) {
+                    Text(
+                        text = "삭제",
+                        color = Color(0xFFF44336)
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteDialog = false
+                        configToDelete = null
+                    }
+                ) {
+                    Text(
+                        text = "취소",
+                        color = Color(0xFF4CAF50)
+                    )
+                }
+            },
+            containerColor = Color(0xFF1A1A2E),
+            titleContentColor = Color.White,
+            textContentColor = Color.White
+        )
     }
 
     // 초기 로드
@@ -85,34 +148,20 @@ fun CompactMarketSignalScreen(modifier: Modifier = Modifier) {
     // 전략별 설정 화면
     if (showStrategySettings) {
         when (selectedStrategy) {
-            "RSI" -> {
-                // RSI 설정 화면 (추후 구현)
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color(0xFF121212))
-                        .padding(16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    Text(
-                        text = "RSI 설정 화면",
-                        fontSize = 18.sp,
-                        color = Color.White
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Button(
-                        onClick = {
-                            showStrategySettings = false
-                            selectedConfig = null
-                            selectedStrategy = ""
-                        }
-                    ) {
-                        Text("뒤로가기")
-                    }
+            "RSI" -> RsiSignalSettingsScreen(
+                editConfig = selectedConfig,
+                onBackClick = {
+                    showStrategySettings = false
+                    selectedConfig = null
+                    selectedStrategy = ""
+                },
+                onSettingsSaved = { config ->
+                    showStrategySettings = false
+                    selectedConfig = null
+                    selectedStrategy = ""
+                    loadData()
                 }
-                return
-            }
+            )
             "CCI" -> {
                 // CCI 설정 화면 (추후 구현)
                 Column(
@@ -170,6 +219,7 @@ fun CompactMarketSignalScreen(modifier: Modifier = Modifier) {
                 return
             }
         }
+        return
     }
 
     // 메인 화면
@@ -292,12 +342,9 @@ fun CompactMarketSignalScreen(modifier: Modifier = Modifier) {
                                 }
                             }
                         },
-                        onDelete = { configToDelete ->
-                            coroutineScope.launch {
-                                marketSignalService.deleteSignalConfig(configToDelete.id) { success, _ ->
-                                    if (success) loadData()
-                                }
-                            }
+                        onDelete = { configToDeleteParam ->
+                            configToDelete = configToDeleteParam
+                            showDeleteDialog = true
                         }
                     )
                 }
@@ -483,6 +530,23 @@ private fun SignalConfigCard(
                                     .padding(horizontal = 4.dp, vertical = 1.dp)
                             )
 
+                            // 롱/숏 표시 추가 (RSI 전략만)
+                            if (config.signalType == "RSI") {
+                                // 임시로 "롱" 표시, 추후 config.direction 필드 추가 필요
+                                Text(
+                                    text = "롱", // TODO: config.direction으로 교체
+                                    fontSize = 9.sp,
+                                    color = Color(0xFF4CAF50),
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier
+                                        .background(
+                                            Color(0xFF4CAF50).copy(alpha = 0.2f),
+                                            RoundedCornerShape(3.dp)
+                                        )
+                                        .padding(horizontal = 4.dp, vertical = 1.dp)
+                                )
+                            }
+
                             if (config.autoTrading) {
                                 Text(
                                     text = "AUTO",
@@ -500,27 +564,44 @@ private fun SignalConfigCard(
                         }
 
                         Text(
-                            text = "${config.checkInterval}분 • ${config.seedMoney}U",
+                            text = "${config.checkInterval}분 • ${String.format("%.0f", config.seedMoney)}U",
                             fontSize = 12.sp,
                             color = Color.Gray
                         )
                     }
                 }
 
-                // 활성화 스위치
-                Switch(
-                    checked = config.isActive,
-                    onCheckedChange = { isActive ->
-                        onToggleActive(config.copy(isActive = isActive))
-                    },
-                    colors = SwitchDefaults.colors(
-                        checkedThumbColor = strategyColor,
-                        checkedTrackColor = strategyColor.copy(alpha = 0.5f)
+                // 활성화 스위치와 삭제 버튼
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Switch(
+                        checked = config.isActive,
+                        onCheckedChange = { isActive ->
+                            onToggleActive(config.copy(isActive = isActive))
+                        },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = strategyColor,
+                            checkedTrackColor = strategyColor.copy(alpha = 0.5f)
+                        )
                     )
-                )
+
+                    IconButton(
+                        onClick = { onDelete(config) },
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Delete,
+                            contentDescription = "삭제",
+                            tint = Color(0xFFF44336),
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
             // 전략별 상세 정보
             Text(
@@ -529,48 +610,6 @@ private fun SignalConfigCard(
                 color = Color.Gray,
                 lineHeight = 18.sp
             )
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // 액션 버튼들
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                OutlinedButton(
-                    onClick = onEdit,
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = strategyColor
-                    ),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, strategyColor)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Edit,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("편집")
-                }
-
-                OutlinedButton(
-                    onClick = { onDelete(config) },
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = Color(0xFFF44336)
-                    ),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFF44336))
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Delete,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("삭제")
-                }
-            }
         }
     }
 }
