@@ -41,7 +41,7 @@ import com.example.ver20.view.signal.user.UserInfoScreen
 import com.example.ver20.view.signal.user.SecuritySettingsScreen
 import com.example.ver20.view.signal.user.LoginScreen
 import com.example.ver20.view.signal.user.CreateAccountScreen
-import com.example.ver20.view.signal.MarketSignalScreen
+import com.example.ver20.view.signal.CompactMarketSignalScreen
 import com.example.ver20.view.signal.SignalHistoryScreen // 새로 추가될 시그널 화면
 import com.example.ver20.view.autotrade.AutoTradingScreen // 새로 추가될 자동매매 화면
 import com.example.ver20.view.price.PriceScreen
@@ -236,7 +236,7 @@ private fun MainContent(
                 2 -> AccountBalanceScreen( // 계좌조회
                     onShowSecuritySettings = onShowSecuritySettings
                 )
-                3 -> MarketSignalScreen() // 시세포착
+                3 -> CompactMarketSignalScreen() // 시세포착
                 4 -> SignalHistoryScreen() // 시그널
                 5 -> AutoTradingScreen() // 자동매매 (새로 추가)
                 6 -> BacktestingScreen() // 백테스팅

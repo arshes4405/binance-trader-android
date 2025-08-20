@@ -1,4 +1,4 @@
-// MarketSignalScreen.kt - 시세포착 메인 화면 (다중 전략 지원)
+// MarketSignalScreen.kt - 시세포착 메인 화면 (컴팩트 버전)
 
 package com.example.ver20.view.signal
 
@@ -15,7 +15,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -29,7 +28,7 @@ import com.example.ver20.dao.trading.signal.MarketSignalService
 import kotlinx.coroutines.launch
 
 @Composable
-fun MarketSignalScreen(modifier: Modifier = Modifier) {
+fun CompactMarketSignalScreen(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val userService = remember { UserService() }
     val marketSignalService = remember { MarketSignalService() }
@@ -86,50 +85,91 @@ fun MarketSignalScreen(modifier: Modifier = Modifier) {
     // 전략별 설정 화면
     if (showStrategySettings) {
         when (selectedStrategy) {
-            "RSI" -> RsiSignalSettingsScreen(
-                editConfig = selectedConfig,
-                onBackClick = {
-                    showStrategySettings = false
-                    selectedConfig = null
-                    selectedStrategy = ""
-                },
-                onSettingsSaved = { config ->
-                    showStrategySettings = false
-                    selectedConfig = null
-                    selectedStrategy = ""
-                    loadData()
+            "RSI" -> {
+                // RSI 설정 화면 (추후 구현)
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color(0xFF121212))
+                        .padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Text(
+                        text = "RSI 설정 화면",
+                        fontSize = 18.sp,
+                        color = Color.White
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Button(
+                        onClick = {
+                            showStrategySettings = false
+                            selectedConfig = null
+                            selectedStrategy = ""
+                        }
+                    ) {
+                        Text("뒤로가기")
+                    }
                 }
-            )
-            "CCI" -> CciSignalSettingsScreen(
-                editConfig = selectedConfig,
-                onBackClick = {
-                    showStrategySettings = false
-                    selectedConfig = null
-                    selectedStrategy = ""
-                },
-                onSettingsSaved = { config ->
-                    showStrategySettings = false
-                    selectedConfig = null
-                    selectedStrategy = ""
-                    loadData()
+                return
+            }
+            "CCI" -> {
+                // CCI 설정 화면 (추후 구현)
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color(0xFF121212))
+                        .padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Text(
+                        text = "CCI 설정 화면",
+                        fontSize = 18.sp,
+                        color = Color.White
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Button(
+                        onClick = {
+                            showStrategySettings = false
+                            selectedConfig = null
+                            selectedStrategy = ""
+                        }
+                    ) {
+                        Text("뒤로가기")
+                    }
                 }
-            )
-            "CORTA" -> CortaSignalSettingsScreen(
-                editConfig = selectedConfig,
-                onBackClick = {
-                    showStrategySettings = false
-                    selectedConfig = null
-                    selectedStrategy = ""
-                },
-                onSettingsSaved = { config ->
-                    showStrategySettings = false
-                    selectedConfig = null
-                    selectedStrategy = ""
-                    loadData()
+                return
+            }
+            "CORTA" -> {
+                // 코르타 설정 화면 (추후 구현)
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color(0xFF121212))
+                        .padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Text(
+                        text = "코르타 설정 화면",
+                        fontSize = 18.sp,
+                        color = Color.White
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Button(
+                        onClick = {
+                            showStrategySettings = false
+                            selectedConfig = null
+                            selectedStrategy = ""
+                        }
+                    ) {
+                        Text("뒤로가기")
+                    }
                 }
-            )
+                return
+            }
         }
-        return
     }
 
     // 메인 화면
@@ -139,7 +179,7 @@ fun MarketSignalScreen(modifier: Modifier = Modifier) {
             .background(Color(0xFF121212))
             .padding(16.dp)
     ) {
-        // 헤더
+        // 헤더 (컴팩트 버전)
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -147,43 +187,42 @@ fun MarketSignalScreen(modifier: Modifier = Modifier) {
         ) {
             Text(
                 text = "시세포착",
-                fontSize = 24.sp,
+                fontSize = 20.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color.White
             )
 
-            Row {
-                IconButton(
-                    onClick = { loadData() }
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Refresh,
-                        contentDescription = "새로고침",
-                        tint = Color(0xFFFFD700)
-                    )
-                }
+            IconButton(
+                onClick = { loadData() }
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Refresh,
+                    contentDescription = "새로고침",
+                    tint = Color(0xFFFFD700),
+                    modifier = Modifier.size(20.dp)
+                )
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(8.dp))
 
-        // 통계 카드
-        StatisticsCard(
+        // 통계 카드 (컴팩트 버전)
+        CompactStatisticsCard(
             configs = signalConfigs,
             recentSignals = recentSignals
         )
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(12.dp))
 
-        // 전략별 탭
-        StrategyTabs(
+        // 전략별 탭 (컴팩트 버전)
+        CompactStrategyTabs(
             configs = signalConfigs,
             onStrategyTabClick = { strategy ->
                 // 해당 전략의 설정 목록 보기 또는 새 설정 추가
             }
         )
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(12.dp))
 
         // 설정 목록 헤더
         Row(
@@ -217,7 +256,7 @@ fun MarketSignalScreen(modifier: Modifier = Modifier) {
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(8.dp))
 
         // 설정 목록
         if (isLoading) {
@@ -268,7 +307,7 @@ fun MarketSignalScreen(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun StatisticsCard(
+private fun CompactStatisticsCard(
     configs: List<MarketSignalConfig>,
     recentSignals: List<MarketSignal>
 ) {
@@ -277,36 +316,26 @@ private fun StatisticsCard(
         colors = CardDefaults.cardColors(
             containerColor = Color(0xFF1E1E1E)
         ),
-        shape = RoundedCornerShape(12.dp)
+        shape = RoundedCornerShape(8.dp)
     ) {
-        Column(
-            modifier = Modifier.padding(16.dp)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly
         ) {
-            Text(
-                text = "현황",
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color.White,
-                modifier = Modifier.padding(bottom = 12.dp)
-            )
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly
-            ) {
-                StatItem("전체 설정", configs.size, Color(0xFF2196F3))
-                StatItem("활성 설정", configs.count { it.isActive }, Color(0xFF4CAF50))
-                StatItem("자동매매", configs.count { it.autoTrading }, Color(0xFFFF9800))
-                StatItem("오늘 신호", recentSignals.count {
-                    System.currentTimeMillis() - it.timestamp < 24 * 60 * 60 * 1000
-                }, Color(0xFFE91E63))
-            }
+            CompactStatItem("전체", configs.size, Color(0xFF2196F3))
+            CompactStatItem("활성", configs.count { it.isActive }, Color(0xFF4CAF50))
+            CompactStatItem("자동", configs.count { it.autoTrading }, Color(0xFFFF9800))
+            CompactStatItem("신호", recentSignals.count {
+                System.currentTimeMillis() - it.timestamp < 24 * 60 * 60 * 1000
+            }, Color(0xFFE91E63))
         }
     }
 }
 
 @Composable
-private fun StatItem(
+private fun CompactStatItem(
     label: String,
     count: Int,
     color: Color
@@ -316,21 +345,20 @@ private fun StatItem(
     ) {
         Text(
             text = count.toString(),
-            fontSize = 18.sp,
+            fontSize = 16.sp,
             fontWeight = FontWeight.Bold,
             color = color
         )
         Text(
             text = label,
-            fontSize = 12.sp,
-            color = Color.Gray,
-            textAlign = TextAlign.Center
+            fontSize = 11.sp,
+            color = Color.Gray
         )
     }
 }
 
 @Composable
-private fun StrategyTabs(
+private fun CompactStrategyTabs(
     configs: List<MarketSignalConfig>,
     onStrategyTabClick: (String) -> Unit
 ) {
@@ -338,7 +366,7 @@ private fun StrategyTabs(
 
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         strategies.forEach { strategy ->
             val count = configs.count { it.signalType == strategy }
@@ -356,21 +384,21 @@ private fun StrategyTabs(
                 colors = CardDefaults.cardColors(
                     containerColor = if (count > 0) color.copy(alpha = 0.2f) else Color(0xFF2A2A2A)
                 ),
-                shape = RoundedCornerShape(8.dp)
+                shape = RoundedCornerShape(6.dp)
             ) {
                 Column(
-                    modifier = Modifier.padding(12.dp),
+                    modifier = Modifier.padding(8.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
                         text = strategy,
-                        fontSize = 14.sp,
+                        fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
                         color = if (count > 0) color else Color.Gray
                     )
                     Text(
                         text = "${count}개",
-                        fontSize = 12.sp,
+                        fontSize = 10.sp,
                         color = Color.Gray
                     )
                 }
