@@ -6,10 +6,6 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
-    <!-- 백그라운드 작업 권한 -->
-    <uses-permission android:name="android.permission.WAKE_LOCK" />
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-
     <!-- 알림 권한 -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.VIBRATE" />
@@ -39,19 +35,6 @@
         </activity>
 
         <!-- Worker는 매니페스트에 등록하지 않음 - WorkManager가 자동 관리 -->
-
-        <!-- 부트 리시버 -->
-        <receiver
-                android:name=".dao.trading.signal.BootReceiver"
-                android:enabled="true"
-                android:exported="true">
-            <intent-filter android:priority="1000">
-                <action android:name="android.intent.action.BOOT_COMPLETED" />
-                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
-                <action android:name="android.intent.action.PACKAGE_REPLACED" />
-                <data android:scheme="package" />
-            </intent-filter>
-        </receiver>
 
         <!-- 앱 메타데이터 (기본만 유지) -->
         <meta-data

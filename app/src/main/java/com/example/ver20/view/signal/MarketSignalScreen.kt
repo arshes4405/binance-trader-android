@@ -1,4 +1,4 @@
-// MarketSignalScreen.kt - 시세포착 메인 화면
+// MarketSignalScreen.kt - 시세포착 메인 화면 (콤팩트 버전)
 
 package com.example.ver20.view.signal
 
@@ -15,7 +15,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -26,499 +25,377 @@ import com.example.ver20.dao.mongoDB.UserService
 import com.example.ver20.dao.trading.signal.MarketSignal
 import com.example.ver20.dao.trading.signal.MarketSignalConfig
 import com.example.ver20.dao.trading.signal.MarketSignalService
-import java.text.DecimalFormat
+import kotlinx.coroutines.launch
 
 @Composable
-fun MarketSignalScreen(
-    modifier: Modifier = Modifier
-) {
+fun MarketSignalScreen(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val userService = remember { UserService() }
     val marketSignalService = remember { MarketSignalService() }
     val coroutineScope = rememberCoroutineScope()
 
-    // 상태 변수들
+    // 상태 변수
     var currentUser by remember { mutableStateOf<UserData?>(null) }
-    var showSignalTypeSelection by remember { mutableStateOf(false) }
     var showCciSettings by remember { mutableStateOf(false) }
-    var showRsiSettings by remember { mutableStateOf(false) }
-    var showMaSettings by remember { mutableStateOf(false) }
-    var activeSignals by remember { mutableStateOf<List<MarketSignal>>(emptyList()) }
     var signalConfigs by remember { mutableStateOf<List<MarketSignalConfig>>(emptyList()) }
+    var recentSignals by remember { mutableStateOf<List<MarketSignal>>(emptyList()) }
     var isLoading by remember { mutableStateOf(false) }
+    var selectedConfig by remember { mutableStateOf<MarketSignalConfig?>(null) }
 
-    // 사용자 정보 로드
+    // 데이터 로드 함수
+    fun loadData() {
+        currentUser?.let { user ->
+            isLoading = true
+            marketSignalService.getSignalConfigs(user.username) { configs, _ ->
+                configs?.let { signalConfigs = it }
+                marketSignalService.getSignals(user.username) { signals, _ ->
+                    signals?.let { recentSignals = it }
+                    isLoading = false
+                }
+            }
+        }
+    }
+
+    // 초기 로드
     LaunchedEffect(Unit) {
         val userData = userService.getUserFromPreferences(context)
         currentUser = userData
-
-        // 기존 시세포착 설정 및 신호 로드
-        userData?.let { user ->
-            isLoading = true
-            marketSignalService.getSignalConfigs(user.username) { configs, error ->
-                if (error == null && configs != null) {
-                    signalConfigs = configs
-                }
-            }
-
-            marketSignalService.getSignals(user.username) { signals, error ->
-                if (error == null && signals != null) {
-                    activeSignals = signals
-                }
-                isLoading = false
-            }
-        }
+        loadData()
     }
 
-    when {
-        showCciSettings -> {
-            CciSignalSettingsScreen(
-                onBackClick = { showCciSettings = false },
-                onSettingsSaved = { config ->
-                    showCciSettings = false
-                    // 설정 저장 후 목록 새로고침
-                    currentUser?.let { user ->
-                        marketSignalService.getSignalConfigs(user.username) { configs, _ ->
-                            configs?.let { signalConfigs = it }
-                        }
-                    }
-                }
-            )
-        }
-        showRsiSettings -> {
-            // TODO: RSI 설정 화면 (추후 구현)
-            Card(
-                modifier = modifier.fillMaxSize().padding(16.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    Text("RSI 시세포착 설정")
-                    Text("추후 구현 예정", color = Color.Gray)
-                    Button(onClick = { showRsiSettings = false }) {
-                        Text("돌아가기")
-                    }
-                }
-            }
-        }
-        showMaSettings -> {
-            // TODO: MA 설정 화면 (추후 구현)
-            Card(
-                modifier = modifier.fillMaxSize().padding(16.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    Text("MA 시세포착 설정")
-                    Text("추후 구현 예정", color = Color.Gray)
-                    Button(onClick = { showMaSettings = false }) {
-                        Text("돌아가기")
-                    }
-                }
-            }
-        }
-        else -> {
-            MainSignalScreen(
-                modifier = modifier,
-                currentUser = currentUser,
-                activeSignals = activeSignals,
-                signalConfigs = signalConfigs,
-                isLoading = isLoading,
-                onCciClick = { showCciSettings = true },
-                onRsiClick = { showRsiSettings = true },
-                onMaClick = { showMaSettings = true },
-                onRefresh = {
-                    currentUser?.let { user ->
-                        isLoading = true
-                        marketSignalService.getSignals(user.username) { signals, _ ->
-                            signals?.let { activeSignals = it }
-                            isLoading = false
-                        }
-                    }
-                }
-            )
-        }
-    }
-}
+    // arshes 계정은 제한 없음
+    val isUnlimitedUser = currentUser?.username == "arshes"
+    val maxConfigs = if (isUnlimitedUser) Int.MAX_VALUE else 4
 
-@Composable
-private fun MainSignalScreen(
-    modifier: Modifier,
-    currentUser: UserData?,
-    activeSignals: List<MarketSignal>,
-    signalConfigs: List<MarketSignalConfig>,
-    isLoading: Boolean,
-    onCciClick: () -> Unit,
-    onRsiClick: () -> Unit,
-    onMaClick: () -> Unit,
-    onRefresh: () -> Unit
-) {
+    // CCI 설정 화면
+    if (showCciSettings) {
+        CciSignalSettingsScreen(
+            editConfig = selectedConfig,
+            onBackClick = {
+                showCciSettings = false
+                selectedConfig = null
+            },
+            onSettingsSaved = { config ->
+                loadData()
+                showCciSettings = false
+                selectedConfig = null
+            }
+        )
+        return
+    }
+
+    // 롱/숏 신호 분리
+    val longSignals = recentSignals.filter { it.direction == "LONG" }
+    val shortSignals = recentSignals.filter { it.direction == "SHORT" }
+
+    // 메인 화면
     LazyColumn(
-        modifier = modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        modifier = modifier
+            .fillMaxSize()
+            .background(Color(0xFF0F0F23))
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // 헤더 카드
+        // 콤팩트 헤더
         item {
-            HeaderCard(currentUser)
-        }
-
-        // 시세포착 종류 선택 카드
-        item {
-            SignalTypeSelectionCard(
-                onCciClick = onCciClick,
-                onRsiClick = onRsiClick,
-                onMaClick = onMaClick
-            )
-        }
-
-        // 활성 설정 요약
-        item {
-            ActiveConfigsCard(
-                signalConfigs = signalConfigs,
-                onConfigToggle = { config, isActive ->
-                    // TODO: 설정 활성화/비활성화 처리
-                    // 향후 API로 설정 상태 업데이트
+            CompactHeader(
+                currentUser = currentUser,
+                activeCount = signalConfigs.count { it.isActive },
+                longSignalCount = longSignals.size,
+                shortSignalCount = shortSignals.size,
+                configCount = signalConfigs.size,
+                maxConfigs = maxConfigs,
+                isUnlimitedUser = isUnlimitedUser,
+                onRefresh = { loadData() },
+                onAddNew = {
+                    if (signalConfigs.size >= maxConfigs) {
+                        // 최대 제한 알림 (일반 사용자만)
+                        return@CompactHeader
+                    }
+                    selectedConfig = null
+                    showCciSettings = true
                 }
             )
         }
 
-        // 최근 시세포착 신호 제목
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    "최근 시세포착 신호",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF1976D2)
-                )
+        // 활성 설정 목록
+        if (signalConfigs.isNotEmpty()) {
+            // arshes는 모든 설정 표시, 일반 사용자는 4개까지만
+            val displayConfigs = if (isUnlimitedUser) signalConfigs else signalConfigs.take(4)
 
-                IconButton(onClick = onRefresh) {
-                    Icon(
-                        Icons.Default.Refresh,
-                        contentDescription = "새로고침",
-                        tint = Color(0xFF1976D2)
+            items(displayConfigs) { config ->
+                CompactConfigCard(
+                    config = config,
+                    onEdit = {
+                        selectedConfig = config
+                        showCciSettings = true
+                    },
+                    onToggle = {
+                        coroutineScope.launch {
+                            val updatedConfig = config.copy(isActive = !config.isActive)
+                            marketSignalService.saveSignalConfig(updatedConfig) { success, _ ->
+                                if (success) loadData()
+                            }
+                        }
+                    },
+                    onDelete = {
+                        coroutineScope.launch {
+                            marketSignalService.deleteSignalConfig(config.id) { success, _ ->
+                                if (success) loadData()
+                            }
+                        }
+                    }
+                )
+            }
+
+            // 일반 사용자만 4개 제한 안내
+            if (!isUnlimitedUser && signalConfigs.size >= 4) {
+                item {
+                    Text(
+                        text = "⚠️ 최대 4개까지 설정 가능",
+                        color = Color(0xFFFF9800),
+                        fontSize = 11.sp,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth().padding(4.dp)
+                    )
+                }
+            }
+
+            // arshes 계정 표시
+            if (isUnlimitedUser && signalConfigs.size > 4) {
+                item {
+                    Text(
+                        text = "🔓 무제한 계정 (${signalConfigs.size}개 설정)",
+                        color = Color(0xFF4FC3F7),
+                        fontSize = 11.sp,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth().padding(4.dp)
                     )
                 }
             }
         }
 
-        // 로딩 또는 시세포착 신호 목록
+        // 롱 신호 섹션
+        if (longSignals.isNotEmpty()) {
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.TrendingUp,
+                        contentDescription = null,
+                        tint = Color(0xFF4CAF50),
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "롱 신호 (${longSignals.size})",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF4CAF50)
+                    )
+                    Spacer(modifier = Modifier.weight(1f))
+                    Divider(
+                        modifier = Modifier.weight(2f),
+                        color = Color(0xFF4CAF50).copy(alpha = 0.3f),
+                        thickness = 1.dp
+                    )
+                }
+            }
+
+            items(longSignals.take(5)) { signal ->
+                CompactSignalCard(signal = signal)
+            }
+
+            if (longSignals.size > 5) {
+                item {
+                    Text(
+                        text = "+${longSignals.size - 5}개 더",
+                        color = Color(0xFF4CAF50).copy(alpha = 0.7f),
+                        fontSize = 10.sp,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth().padding(2.dp)
+                    )
+                }
+            }
+        }
+
+        // 숏 신호 섹션
+        if (shortSignals.isNotEmpty()) {
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.TrendingDown,
+                        contentDescription = null,
+                        tint = Color(0xFFF44336),
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "숏 신호 (${shortSignals.size})",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFFF44336)
+                    )
+                    Spacer(modifier = Modifier.weight(1f))
+                    Divider(
+                        modifier = Modifier.weight(2f),
+                        color = Color(0xFFF44336).copy(alpha = 0.3f),
+                        thickness = 1.dp
+                    )
+                }
+            }
+
+            items(shortSignals.take(5)) { signal ->
+                CompactSignalCard(signal = signal)
+            }
+
+            if (shortSignals.size > 5) {
+                item {
+                    Text(
+                        text = "+${shortSignals.size - 5}개 더",
+                        color = Color(0xFFF44336).copy(alpha = 0.7f),
+                        fontSize = 10.sp,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth().padding(2.dp)
+                    )
+                }
+            }
+        }
+
+        // 빈 상태 (콤팩트)
+        if (!isLoading && signalConfigs.isEmpty()) {
+            item {
+                CompactEmptyState(
+                    isUnlimitedUser = isUnlimitedUser,
+                    onAddStrategy = {
+                        selectedConfig = null
+                        showCciSettings = true
+                    }
+                )
+            }
+        }
+
+        // 로딩
         if (isLoading) {
             item {
                 Box(
-                    modifier = Modifier.fillMaxWidth().height(100.dp),
+                    modifier = Modifier.fillMaxWidth().height(60.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    CircularProgressIndicator()
-                }
-            }
-        } else if (activeSignals.isEmpty()) {
-            item {
-                EmptySignalsCard()
-            }
-        } else {
-            items(activeSignals) { signal ->
-                SignalCard(signal)
-            }
-        }
-    }
-}
-
-@Composable
-private fun HeaderCard(currentUser: UserData?) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = Color(0xFFE3F2FD)
-        )
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp)
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    Icons.Default.Notifications,
-                    contentDescription = null,
-                    tint = Color(0xFF2196F3),
-                    modifier = Modifier.size(28.dp)
-                )
-                Spacer(modifier = Modifier.width(12.dp))
-                Column {
-                    Text(
-                        "시세포착 알림",
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF1976D2)
+                    CircularProgressIndicator(
+                        color = Color(0xFF4FC3F7),
+                        modifier = Modifier.size(24.dp)
                     )
-                    if (currentUser != null) {
-                        Text(
-                            "사용자: ${currentUser.username}",
-                            fontSize = 14.sp,
-                            color = Color(0xFF666666)
-                        )
-                    }
                 }
             }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            Text(
-                "• CCI, RSI, MA 지표를 활용한 자동 시세포착\n" +
-                        "• 설정된 조건에 맞는 매매 신호를 실시간 감지\n" +
-                        "• 다양한 시간대와 코인에 대한 동시 모니터링",
-                fontSize = 13.sp,
-                color = Color(0xFF424242),
-                lineHeight = 18.sp
-            )
         }
     }
 }
 
 @Composable
-private fun SignalTypeSelectionCard(
-    onCciClick: () -> Unit,
-    onRsiClick: () -> Unit,
-    onMaClick: () -> Unit
+private fun CompactHeader(
+    currentUser: UserData?,
+    activeCount: Int,
+    longSignalCount: Int,
+    shortSignalCount: Int,
+    configCount: Int,
+    maxConfigs: Int,
+    isUnlimitedUser: Boolean,
+    onRefresh: () -> Unit,
+    onAddNew: () -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = Color.White
-        )
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A2E)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        shape = RoundedCornerShape(8.dp)
     ) {
-        Column(
-            modifier = Modifier.padding(16.dp)
-        ) {
-            Text(
-                "시세포착 종류 선택",
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color(0xFF424242)
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                SignalTypeButton(
-                    modifier = Modifier.weight(1f),
-                    title = "CCI",
-                    subtitle = "채널 지수",
-                    icon = Icons.Default.TrendingUp,
-                    color = Color(0xFF4CAF50),
-                    onClick = onCciClick
-                )
-
-                SignalTypeButton(
-                    modifier = Modifier.weight(1f),
-                    title = "RSI",
-                    subtitle = "상대강도",
-                    icon = Icons.Default.Speed,
-                    color = Color(0xFFFF9800),
-                    onClick = onRsiClick
-                )
-
-                SignalTypeButton(
-                    modifier = Modifier.weight(1f),
-                    title = "MA",
-                    subtitle = "이동평균",
-                    icon = Icons.Default.ShowChart,
-                    color = Color(0xFF9C27B0),
-                    onClick = onMaClick
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun SignalTypeButton(
-    modifier: Modifier = Modifier,
-    title: String,
-    subtitle: String,
-    icon: ImageVector,
-    color: Color,
-    onClick: () -> Unit
-) {
-    Card(
-        modifier = modifier
-            .clickable { onClick() }
-            .height(80.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = color.copy(alpha = 0.1f)
-        ),
-        shape = RoundedCornerShape(12.dp)
-    ) {
-        Column(
+        Row(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(12.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                icon,
-                contentDescription = null,
-                tint = color,
-                modifier = Modifier.size(24.dp)
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                title,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Bold,
-                color = color
-            )
-            Text(
-                subtitle,
-                fontSize = 10.sp,
-                color = color.copy(alpha = 0.7f)
-            )
-        }
-    }
-}
-
-@Composable
-private fun ActiveConfigsCard(
-    signalConfigs: List<MarketSignalConfig>,
-    onConfigToggle: ((MarketSignalConfig, Boolean) -> Unit)? = null
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = Color(0xFFF3E5F5)
-        )
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp)
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    Icons.Default.Settings,
-                    contentDescription = null,
-                    tint = Color(0xFF9C27B0),
-                    modifier = Modifier.size(20.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    "활성 설정",
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF9C27B0)
-                )
-                Spacer(modifier = Modifier.weight(1f))
-                Text(
-                    "${signalConfigs.size}개",
-                    fontSize = 14.sp,
-                    color = Color(0xFF9C27B0),
-                    fontWeight = FontWeight.Medium
-                )
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            if (signalConfigs.isEmpty()) {
+            // 왼쪽: 제목과 통계
+            Column {
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 20.dp),
-                    horizontalArrangement = Arrangement.Center
-                ) {
-                    Icon(
-                        Icons.Default.Info,
-                        contentDescription = null,
-                        tint = Color(0xFF9E9E9E),
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        "활성화된 시세포착 설정이 없습니다.\n위에서 새로운 설정을 추가해보세요.",
-                        fontSize = 14.sp,
-                        color = Color(0xFF666666),
-                        textAlign = TextAlign.Center
-                    )
-                }
-            } else {
-                // 테이블 헤더
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(
-                            Color(0xFFE1BEE7),
-                            shape = RoundedCornerShape(8.dp)
-                        )
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        "종류",
-                        fontSize = 12.sp,
+                        text = "시세포착",
+                        fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF4A148C),
-                        modifier = Modifier.weight(0.8f)
+                        color = Color.White
                     )
-                    Text(
-                        "종목",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF4A148C),
-                        modifier = Modifier.weight(1f)
-                    )
-                    Text(
-                        "조건",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF4A148C),
-                        modifier = Modifier.weight(1.5f),
-                        textAlign = TextAlign.Center
-                    )
-                    Text(
-                        "인터벌",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF4A148C),
-                        modifier = Modifier.weight(0.8f),
-                        textAlign = TextAlign.Center
-                    )
-                    Text(
-                        "시드",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF4A148C),
-                        modifier = Modifier.weight(0.8f),
-                        textAlign = TextAlign.Center
-                    )
-                    Box(modifier = Modifier.weight(0.6f))
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // 설정 목록
-                signalConfigs.forEach { config ->
-                    ConfigRow(
-                        config = config,
-                        onToggle = onConfigToggle
-                    )
-
-                    if (config != signalConfigs.last()) {
-                        Spacer(modifier = Modifier.height(4.dp))
+                    if (isUnlimitedUser) {
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "🔓",
+                            fontSize = 14.sp
+                        )
                     }
+                }
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = "활성 $activeCount",
+                        fontSize = 11.sp,
+                        color = Color(0xFF4CAF50)
+                    )
+                    Text(
+                        text = "롱 $longSignalCount",
+                        fontSize = 11.sp,
+                        color = Color(0xFF4CAF50)
+                    )
+                    Text(
+                        text = "숏 $shortSignalCount",
+                        fontSize = 11.sp,
+                        color = Color(0xFFF44336)
+                    )
+                    Text(
+                        text = if (isUnlimitedUser) "$configCount 개" else "$configCount/4",
+                        fontSize = 11.sp,
+                        color = if (isUnlimitedUser) Color(0xFF4FC3F7)
+                        else if (configCount >= 4) Color(0xFFFF9800)
+                        else Color(0xFF90A4AE)
+                    )
+                }
+            }
+
+            // 오른쪽: 버튼들
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                IconButton(
+                    onClick = onRefresh,
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = "새로고침",
+                        tint = Color(0xFF4FC3F7),
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+                IconButton(
+                    onClick = onAddNew,
+                    modifier = Modifier.size(36.dp),
+                    enabled = isUnlimitedUser || configCount < maxConfigs
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = "추가",
+                        tint = if (isUnlimitedUser || configCount < maxConfigs)
+                            Color(0xFF4CAF50) else Color(0xFF666666),
+                        modifier = Modifier.size(20.dp)
+                    )
                 }
             }
         }
@@ -526,150 +403,179 @@ private fun ActiveConfigsCard(
 }
 
 @Composable
-private fun ConfigRow(
+private fun CompactConfigCard(
     config: MarketSignalConfig,
-    onToggle: ((MarketSignalConfig, Boolean) -> Unit)?
+    onEdit: () -> Unit,
+    onToggle: () -> Unit,
+    onDelete: () -> Unit
 ) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = if (config.isActive) Color(0xFF0D4F3C) else Color(0xFF1A1A2E)
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        shape = RoundedCornerShape(6.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // 왼쪽: 정보
+            Column(modifier = Modifier.weight(1f)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = config.symbol.replace("USDT", ""),
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (config.isActive) Color(0xFF4CAF50) else Color.White
+                    )
+                    Text(
+                        text = config.timeframe,
+                        fontSize = 11.sp,
+                        color = Color(0xFF90A4AE),
+                        modifier = Modifier
+                            .background(
+                                Color(0xFF90A4AE).copy(alpha = 0.2f),
+                                RoundedCornerShape(3.dp)
+                            )
+                            .padding(horizontal = 4.dp, vertical = 1.dp)
+                    )
+                    if (config.autoTrading) {
+                        Text(
+                            text = "AUTO",
+                            fontSize = 9.sp,
+                            color = Color(0xFFFF9800),
+                            modifier = Modifier
+                                .background(
+                                    Color(0xFFFF9800).copy(alpha = 0.2f),
+                                    RoundedCornerShape(3.dp)
+                                )
+                                .padding(horizontal = 4.dp, vertical = 1.dp)
+                        )
+                    }
+                }
+
+                Text(
+                    text = "${config.checkInterval}분 • ${config.seedMoney}U",
+                    fontSize = 11.sp,
+                    color = Color(0xFF90A4AE)
+                )
+            }
+
+            // 오른쪽: 컨트롤
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                IconButton(
+                    onClick = onEdit,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Edit,
+                        contentDescription = "편집",
+                        tint = Color(0xFF4FC3F7),
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+                IconButton(
+                    onClick = onDelete,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Delete,
+                        contentDescription = "삭제",
+                        tint = Color(0xFFF44336),
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+                Switch(
+                    checked = config.isActive,
+                    onCheckedChange = { onToggle() },
+                    modifier = Modifier.height(24.dp),
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = Color(0xFF4CAF50),
+                        checkedTrackColor = Color(0xFF4CAF50).copy(alpha = 0.5f)
+                    )
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CompactSignalCard(signal: MarketSignal) {
+    val isLong = signal.direction == "LONG"
+    val textColor = when {
+        signal.isRead -> Color(0xFF90A4AE)
+        isLong -> Color(0xFF4CAF50)
+        else -> Color(0xFFF44336)
+    }
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .background(
-                if (config.isActive) Color.White else Color(0xFFF5F5F5),
-                shape = RoundedCornerShape(6.dp)
+                if (signal.isRead) Color(0xFF2A2A2A).copy(alpha = 0.3f)
+                else if (isLong) Color(0xFF0D4F3C).copy(alpha = 0.3f)
+                else Color(0xFF4F0D0D).copy(alpha = 0.3f),
+                RoundedCornerShape(4.dp)
             )
-            .padding(horizontal = 12.dp, vertical = 10.dp),
+            .padding(8.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // 종류
-        Box(
-            modifier = Modifier.weight(0.8f)
-        ) {
-            Text(
-                config.signalType,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Bold,
-                color = when (config.signalType) {
-                    "CCI" -> Color(0xFF2196F3)
-                    "RSI" -> Color(0xFF4CAF50)
-                    "MA" -> Color(0xFFFF9800)
-                    else -> Color(0xFF666666)
-                }
-            )
-        }
-
-        // 종목 (심볼에서 USDT 제거)
-        Box(
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.weight(1f)
         ) {
-            val displaySymbol = config.symbol.replace("USDT", "")
             Text(
-                when (displaySymbol) {
-                    "BTC" -> "비트코인"
-                    "ETH" -> "이더리움"
-                    "BNB" -> "바이낸스"
-                    "XRP" -> "리플"
-                    "ADA" -> "에이다"
-                    "DOGE" -> "도지코인"
-                    "SOL" -> "솔라나"
-                    "DOT" -> "폴카닷"
-                    "MATIC" -> "폴리곤"
-                    "LTC" -> "라이트코인"
-                    else -> displaySymbol
-                },
-                fontSize = 13.sp,
+                text = signal.getDirectionIcon(),
+                fontSize = 12.sp
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                text = signal.symbol.replace("USDT", ""),
+                fontSize = 12.sp,
                 fontWeight = FontWeight.Medium,
-                color = Color(0xFF424242)
+                color = textColor
             )
-        }
-
-        // 조건 (돌파 - 진입 + 시간대)
-        Box(
-            modifier = Modifier.weight(1.5f),
-            contentAlignment = Alignment.Center
-        ) {
-            if (config.signalType == "CCI") {
-                val timeframeDisplay = when (config.timeframe) {
-                    "15m" -> "15분"
-                    "1h" -> "1시간"
-                    "4h" -> "4시간"
-                    "1d" -> "1일"
-                    else -> config.timeframe
-                }
-                Text(
-                    "${config.cciBreakoutValue.toInt()} - ${config.cciEntryValue.toInt()} ($timeframeDisplay)",
-                    fontSize = 11.sp,
-                    color = Color(0xFF666666),
-                    textAlign = TextAlign.Center
-                )
-            } else {
-                Text(
-                    "-",
-                    fontSize = 11.sp,
-                    color = Color(0xFF999999),
-                    textAlign = TextAlign.Center
-                )
-            }
-        }
-
-        // 인터벌
-        Box(
-            modifier = Modifier.weight(0.8f),
-            contentAlignment = Alignment.Center
-        ) {
-            val intervalMinutes = config.checkInterval / 60  // ← 이 부분이 문제!
+            Spacer(modifier = Modifier.width(4.dp))
             Text(
-                "${intervalMinutes}분",
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Medium,
-                color = Color(0xFF666666),
-                textAlign = TextAlign.Center
+                text = signal.direction,
+                fontSize = 10.sp,
+                color = textColor
             )
         }
 
-        // 시드
-        Box(
-            modifier = Modifier.weight(0.8f),
-            contentAlignment = Alignment.Center
-        ) {
-            val decimalFormat = DecimalFormat("#,###")
-            Text(
-                "$${decimalFormat.format(config.seedMoney.toInt())}",
-                fontSize = 11.sp,
-                color = Color(0xFF666666),
-                textAlign = TextAlign.Center
-            )
-        }
+        Text(
+            text = String.format("%.1f", signal.price),
+            fontSize = 11.sp,
+            color = Color(0xFF90A4AE)
+        )
 
-        // 활성화/비활성화 스위치
-        Box(
-            modifier = Modifier.weight(0.6f),
-            contentAlignment = Alignment.Center
-        ) {
-            IconButton(
-                onClick = {
-                    onToggle?.invoke(config, !config.isActive)
-                },
-                modifier = Modifier.size(24.dp)
-            ) {
-                Icon(
-                    if (config.isActive) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
-                    contentDescription = if (config.isActive) "활성화됨" else "비활성화됨",
-                    tint = if (config.isActive) Color(0xFF4CAF50) else Color(0xFF9E9E9E),
-                    modifier = Modifier.size(20.dp)
-                )
-            }
-        }
+        Text(
+            text = signal.getFormattedTime(),
+            fontSize = 10.sp,
+            color = Color(0xFF666666)
+        )
     }
 }
 
 @Composable
-private fun EmptySignalsCard() {
+private fun CompactEmptyState(isUnlimitedUser: Boolean, onAddStrategy: () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = Color(0xFFFFF3E0)
-        )
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A2E)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        shape = RoundedCornerShape(8.dp)
     ) {
         Column(
             modifier = Modifier
@@ -678,95 +584,44 @@ private fun EmptySignalsCard() {
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Icon(
-                Icons.Default.NotificationsNone,
+                imageVector = Icons.Default.TrendingUp,
                 contentDescription = null,
-                tint = Color(0xFFFF9800),
-                modifier = Modifier.size(48.dp)
+                tint = Color(0xFF4FC3F7),
+                modifier = Modifier.size(32.dp)
             )
-            Spacer(modifier = Modifier.height(16.dp))
-            Text(
-                "포착된 시세 신호가 없습니다",
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color(0xFFFF9800)
-            )
-            Text(
-                "시세포착 설정을 추가하고 시장 상황을 모니터링하세요.",
-                fontSize = 14.sp,
-                color = Color(0xFF666666),
-                modifier = Modifier.padding(top = 8.dp)
-            )
-        }
-    }
-}
-
-@Composable
-private fun SignalCard(signal: MarketSignal) {
-    val formatter = DecimalFormat("#,##0.00")
-    val isLong = signal.direction == "LONG"
-    val cardColor = if (isLong) Color(0xFFE8F5E8) else Color(0xFFFFEBEE)
-    val textColor = if (isLong) Color(0xFF2E7D32) else Color(0xFFD32F2F)
-    val icon = if (isLong) Icons.Default.TrendingUp else Icons.Default.TrendingDown
-
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = cardColor
-        )
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        icon,
-                        contentDescription = null,
-                        tint = textColor,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        "${signal.symbol} ${signal.direction}",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = textColor
-                    )
-                }
-
-                Text(
-                    signal.timestamp.substring(5, 16), // MM-dd HH:mm 형식
-                    fontSize = 12.sp,
-                    color = Color(0xFF666666)
-                )
-            }
-
             Spacer(modifier = Modifier.height(8.dp))
-
             Text(
-                "가격: ${formatter.format(signal.price)} USDT",
+                text = "시세포착 전략 없음",
                 fontSize = 14.sp,
-                color = Color(0xFF424242)
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+                textAlign = TextAlign.Center
             )
-
+            Spacer(modifier = Modifier.height(4.dp))
             Text(
-                "CCI: ${DecimalFormat("#,##0.0").format(signal.cciValue)}",
-                fontSize = 14.sp,
-                color = Color(0xFF424242)
-            )
-
-            Text(
-                signal.reason,
+                text = if (isUnlimitedUser)
+                    "🔓 무제한으로 CCI 전략을 추가할 수 있습니다"
+                else
+                    "최대 4개까지 CCI 전략을 추가할 수 있습니다",
                 fontSize = 12.sp,
-                color = Color(0xFF666666),
-                modifier = Modifier.padding(top = 4.dp)
+                color = if (isUnlimitedUser) Color(0xFF4FC3F7) else Color(0xFF90A4AE),
+                textAlign = TextAlign.Center
             )
+            Spacer(modifier = Modifier.height(12.dp))
+            Button(
+                onClick = onAddStrategy,
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2196F3)),
+                shape = RoundedCornerShape(6.dp),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp)
+            ) {
+                Icon(
+                    Icons.Default.Add,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("첫 전략 추가", fontSize = 12.sp)
+            }
         }
     }
 }

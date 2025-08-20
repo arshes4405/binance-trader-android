@@ -1,16 +1,14 @@
-// CciSignalSettingsScreen.kt - CCI 시세포착 설정 화면 (분 단위 인터벌)
+// CciSignalSettingsScreen.kt - CCI 시세포착 설정 화면 (간단한 버전)
 
 package com.example.ver20.view.signal
 
-import android.content.Context
 import android.widget.Toast
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -32,6 +30,7 @@ import kotlinx.coroutines.launch
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CciSignalSettingsScreen(
+    editConfig: MarketSignalConfig? = null,
     onBackClick: () -> Unit,
     onSettingsSaved: (MarketSignalConfig) -> Unit
 ) {
@@ -43,251 +42,220 @@ fun CciSignalSettingsScreen(
     // 사용자 정보
     var currentUser by remember { mutableStateOf<UserData?>(null) }
 
-    // 설정값들 (진입체크 인터벌을 분 단위로 변경)
-    var selectedSymbol by remember { mutableStateOf("BTCUSDT") }
-    var selectedTimeframe by remember { mutableStateOf("15m") }
-    var checkInterval by remember { mutableStateOf("15") } // 분 단위로 변경
-    var cciPeriod by remember { mutableStateOf("20") }
-    var cciBreakoutValue by remember { mutableStateOf("100") }
-    var cciEntryValue by remember { mutableStateOf("90") }
-    var seedMoney by remember { mutableStateOf("1000") }
-    var isActive by remember { mutableStateOf(true) }
+    // 기본 설정값들
+    var selectedSymbol by remember { mutableStateOf(editConfig?.symbol ?: "BTCUSDT") }
+    var selectedTimeframe by remember { mutableStateOf(editConfig?.timeframe ?: "15m") }
+    var checkInterval by remember { mutableStateOf(editConfig?.checkInterval?.toString() ?: "15") }
+    var seedMoney by remember { mutableStateOf(editConfig?.seedMoney?.toString() ?: "1000") }
+    var isActive by remember { mutableStateOf(editConfig?.isActive ?: true) }
+    var enableAutoTrading by remember { mutableStateOf(editConfig?.autoTrading ?: false) }
 
     // UI 상태
     var isSaving by remember { mutableStateOf(false) }
-    var showSymbolDialog by remember { mutableStateOf(false) }
+    var showSymbolMenu by remember { mutableStateOf(false) }
+    var showTimeframeMenu by remember { mutableStateOf(false) }
 
     // 사용자 정보 로드
     LaunchedEffect(Unit) {
         currentUser = userService.getUserFromPreferences(context)
     }
 
-    // 시간대 옵션
-    val timeframeOptions = listOf(
-        "15m" to "15분",
-        "1h" to "1시간",
-        "4h" to "4시간"
-    )
-
-    // 인기 심볼 목록
-    val popularSymbols = listOf(
-        "BTCUSDT", "ETHUSDT", "BNBUSDT", "XRPUSDT", "ADAUSDT",
-        "DOGEUSDT", "SOLUSDT", "DOTUSDT", "MATICUSDT", "LTCUSDT"
-    )
-
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("CCI 시세포착 설정") },
-                navigationIcon = {
-                    IconButton(onClick = onBackClick) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "뒤로가기")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color(0xFF1976D2),
-                    titleContentColor = Color.White,
-                    navigationIconContentColor = Color.White
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFF0F0F23))
+    ) {
+        // 상단 앱바
+        TopAppBar(
+            title = {
+                Text(
+                    text = if (editConfig != null) "설정 편집" else "CCI 전략 설정",
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold
                 )
+            },
+            navigationIcon = {
+                IconButton(onClick = onBackClick) {
+                    Icon(
+                        imageVector = Icons.Default.ArrowBack,
+                        contentDescription = "뒤로가기",
+                        tint = Color.White
+                    )
+                }
+            },
+            colors = TopAppBarDefaults.topAppBarColors(
+                containerColor = Color(0xFF1A1A2E)
             )
-        }
-    ) { paddingValues ->
-        Box(
+        )
+
+        LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(paddingValues)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp)
-                    .padding(top = 16.dp, bottom = 32.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                // CCI 전략 설명 카드
-                CciExplanationCard()
+            // 전략 정보
+            item {
+                InfoCard()
+            }
 
-                // 기본 설정 카드
+            // 기본 설정
+            item {
                 BasicSettingsCard(
                     selectedSymbol = selectedSymbol,
                     selectedTimeframe = selectedTimeframe,
                     checkInterval = checkInterval,
+                    onSymbolClick = { showSymbolMenu = true },
+                    onTimeframeClick = { showTimeframeMenu = true },
+                    onIntervalChange = { checkInterval = it }
+                )
+            }
+
+            // 투자 설정
+            item {
+                InvestmentCard(
                     seedMoney = seedMoney,
-                    onSymbolClick = { showSymbolDialog = true },
-                    onTimeframeChange = { selectedTimeframe = it },
-                    onCheckIntervalChange = { checkInterval = it },
+                    enableAutoTrading = enableAutoTrading,
                     onSeedMoneyChange = { seedMoney = it },
-                    timeframeOptions = timeframeOptions
+                    onAutoTradingChange = { enableAutoTrading = it }
                 )
+            }
 
-                // CCI 지표 설정 카드
-                CciIndicatorSettingsCard(
-                    cciPeriod = cciPeriod,
-                    cciBreakoutValue = cciBreakoutValue,
-                    cciEntryValue = cciEntryValue,
-                    onCciPeriodChange = { cciPeriod = it },
-                    onBreakoutValueChange = { cciBreakoutValue = it },
-                    onEntryValueChange = { cciEntryValue = it }
+            // 활성화 설정
+            item {
+                ActivationCard(
+                    isActive = isActive,
+                    onToggle = { isActive = it }
                 )
+            }
 
-                // 활성화 상태 설정
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = Color.White
-                    )
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            "설정 활성화",
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-                        Switch(
-                            checked = isActive,
-                            onCheckedChange = { isActive = it }
-                        )
-                    }
-                }
-
-                // 저장 버튼
+            // 저장 버튼
+            item {
                 Button(
                     onClick = {
-                        if (currentUser == null) {
-                            Toast.makeText(context, "로그인이 필요합니다.", Toast.LENGTH_SHORT).show()
-                            return@Button
-                        }
-
-                        if (validateInputs(
-                                context = context,
-                                interval = checkInterval,
-                                period = cciPeriod,
-                                breakout = cciBreakoutValue,
-                                entry = cciEntryValue,
-                                seed = seedMoney
-                            )) {
-
+                        currentUser?.let { user ->
                             isSaving = true
-                            coroutineScope.launch {
-                                // 분 단위를 초 단위로 변환하여 저장
-                                val intervalInSeconds = checkInterval.toInt() * 60
-
+                            try {
                                 val config = MarketSignalConfig(
-                                    username = currentUser!!.username,
+                                    id = editConfig?.id ?: "",
+                                    username = user.username,
                                     signalType = "CCI",
                                     symbol = selectedSymbol,
                                     timeframe = selectedTimeframe,
-                                    checkInterval = intervalInSeconds,
-                                    cciPeriod = cciPeriod.toInt(),
-                                    cciBreakoutValue = cciBreakoutValue.toDouble(),
-                                    cciEntryValue = cciEntryValue.toDouble(),
-                                    seedMoney = seedMoney.toDouble(),
-                                    isActive = isActive
+                                    checkInterval = checkInterval.toIntOrNull() ?: 15,
+                                    seedMoney = seedMoney.toDoubleOrNull() ?: 1000.0,
+                                    isActive = isActive,
+                                    autoTrading = enableAutoTrading
                                 )
 
-                                marketSignalService.saveSignalConfig(config) { success, message ->
-                                    isSaving = false
-                                    if (success) {
-                                        Toast.makeText(context, "설정이 저장되었습니다.", Toast.LENGTH_SHORT).show()
-                                        onSettingsSaved(config)
-                                    } else {
-                                        Toast.makeText(context, "저장 실패: $message", Toast.LENGTH_LONG).show()
+                                coroutineScope.launch {
+                                    marketSignalService.saveSignalConfig(config) { success, message ->
+                                        isSaving = false
+                                        if (success) {
+                                            Toast.makeText(context, "설정이 저장되었습니다", Toast.LENGTH_SHORT).show()
+                                            onSettingsSaved(config)
+                                        } else {
+                                            Toast.makeText(context, "저장 실패: $message", Toast.LENGTH_LONG).show()
+                                        }
                                     }
                                 }
+                            } catch (e: Exception) {
+                                isSaving = false
+                                Toast.makeText(context, "입력값을 확인해주세요", Toast.LENGTH_SHORT).show()
                             }
                         }
                     },
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(56.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2196F3)),
                     enabled = !isSaving,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFF4CAF50)
-                    )
+                    shape = RoundedCornerShape(12.dp)
                 ) {
                     if (isSaving) {
                         CircularProgressIndicator(
-                            modifier = Modifier.size(20.dp),
+                            modifier = Modifier.size(24.dp),
                             color = Color.White
                         )
                     } else {
                         Icon(Icons.Default.Save, contentDescription = null)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            "설정 저장",
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold
-                        )
+                        Text("저장하기", fontSize = 16.sp, fontWeight = FontWeight.Bold)
                     }
                 }
-
-                // 추가 하단 여백
-                Spacer(modifier = Modifier.height(16.dp))
             }
         }
     }
 
-    // 심볼 선택 다이얼로그
-    if (showSymbolDialog) {
-        SymbolSelectionDialog(
-            symbols = popularSymbols,
-            selectedSymbol = selectedSymbol,
-            onSymbolSelected = {
-                selectedSymbol = it
-                showSymbolDialog = false
-            },
-            onDismiss = { showSymbolDialog = false }
-        )
+    // 심볼 선택 메뉴
+    if (showSymbolMenu) {
+        val symbols = listOf("BTCUSDT", "ETHUSDT", "BNBUSDT", "ADAUSDT", "XRPUSDT", "SOLUSDT")
+        DropdownMenu(
+            expanded = showSymbolMenu,
+            onDismissRequest = { showSymbolMenu = false }
+        ) {
+            symbols.forEach { symbol ->
+                DropdownMenuItem(
+                    text = { Text(symbol) },
+                    onClick = {
+                        selectedSymbol = symbol
+                        showSymbolMenu = false
+                    }
+                )
+            }
+        }
+    }
+
+    // 시간대 선택 메뉴
+    if (showTimeframeMenu) {
+        val timeframes = listOf("15m", "1h", "4h", "1d")
+        DropdownMenu(
+            expanded = showTimeframeMenu,
+            onDismissRequest = { showTimeframeMenu = false }
+        ) {
+            timeframes.forEach { timeframe ->
+                DropdownMenuItem(
+                    text = { Text(timeframe) },
+                    onClick = {
+                        selectedTimeframe = timeframe
+                        showTimeframeMenu = false
+                    }
+                )
+            }
+        }
     }
 }
 
 @Composable
-private fun CciExplanationCard() {
+private fun InfoCard() {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = Color(0xFFE3F2FD)
-        )
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A2E))
     ) {
-        Column(
-            modifier = Modifier.padding(16.dp)
+        Row(
+            modifier = Modifier.padding(20.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    Icons.Default.TrendingUp,
-                    contentDescription = null,
-                    tint = Color(0xFF2196F3),
-                    modifier = Modifier.size(24.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
+            Icon(
+                imageVector = Icons.Default.TrendingUp,
+                contentDescription = null,
+                tint = Color(0xFF2196F3),
+                modifier = Modifier.size(32.dp)
+            )
+            Spacer(modifier = Modifier.width(16.dp))
+            Column {
                 Text(
-                    "CCI 시세포착 전략",
-                    fontSize = 16.sp,
+                    text = "CCI 시세포착 전략",
+                    fontSize = 18.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFF1976D2)
+                    color = Color.White
+                )
+                Text(
+                    text = "과매수/과매도 구간 포착",
+                    fontSize = 14.sp,
+                    color = Color(0xFF90A4AE)
                 )
             }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            Text(
-                "• 롱 진입: CCI가 -돌파값 아래로 이탈 이후 -진입값 안으로 진입시\n" +
-                        "• 숏 진입: CCI가 +돌파값 위로 이탈 이후 +진입값 안으로 진입시\n" +
-                        "• 설정된 인터벌마다 자동으로 조건을 체크합니다\n" +
-                        "• 조건 충족 시 시세포착 알림이 생성됩니다",
-                fontSize = 13.sp,
-                color = Color(0xFF424242),
-                lineHeight = 18.sp
-            )
         }
     }
 }
@@ -297,94 +265,87 @@ private fun BasicSettingsCard(
     selectedSymbol: String,
     selectedTimeframe: String,
     checkInterval: String,
-    seedMoney: String,
     onSymbolClick: () -> Unit,
-    onTimeframeChange: (String) -> Unit,
-    onCheckIntervalChange: (String) -> Unit,
-    onSeedMoneyChange: (String) -> Unit,
-    timeframeOptions: List<Pair<String, String>>
+    onTimeframeClick: () -> Unit,
+    onIntervalChange: (String) -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = Color.White
-        )
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A2E))
     ) {
         Column(
-            modifier = Modifier.padding(16.dp)
+            modifier = Modifier.padding(20.dp)
         ) {
             Text(
-                "기본 설정",
+                text = "기본 설정",
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color(0xFF424242)
+                color = Color.White,
+                modifier = Modifier.padding(bottom = 16.dp)
             )
 
-            Spacer(modifier = Modifier.height(16.dp))
-
             // 코인 선택
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onSymbolClick() },
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF2A2A2A))
             ) {
-                Text("코인:", fontSize = 14.sp, color = Color(0xFF666666))
-                Button(
-                    onClick = onSymbolClick,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFFE3F2FD)
-                    )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        selectedSymbol,
-                        color = Color(0xFF1976D2)
-                    )
+                    Text("코인", color = Color.White)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(selectedSymbol, color = Color(0xFF4FC3F7), fontWeight = FontWeight.Medium)
+                        Icon(Icons.Default.KeyboardArrowDown, contentDescription = null, tint = Color(0xFF90A4AE))
+                    }
                 }
             }
 
             Spacer(modifier = Modifier.height(12.dp))
 
             // 시간대 선택
-            Text("시간대:", fontSize = 14.sp, color = Color(0xFF666666))
-            Spacer(modifier = Modifier.height(8.dp))
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onTimeframeClick() },
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF2A2A2A))
             ) {
-                timeframeOptions.forEach { (value, label) ->
-                    FilterChip(
-                        onClick = { onTimeframeChange(value) },
-                        label = { Text(label) },
-                        selected = selectedTimeframe == value
-                    )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("시간대", color = Color.White)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(selectedTimeframe, color = Color(0xFF4FC3F7), fontWeight = FontWeight.Medium)
+                        Icon(Icons.Default.KeyboardArrowDown, contentDescription = null, tint = Color(0xFF90A4AE))
+                    }
                 }
             }
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // 진입체크 인터벌 (분 단위)
+            // 체크 간격
+            Text("체크 간격 (분)", color = Color.White, fontSize = 14.sp)
+            Spacer(modifier = Modifier.height(8.dp))
             OutlinedTextField(
                 value = checkInterval,
-                onValueChange = onCheckIntervalChange,
-                label = { Text("진입체크 인터벌 (분)") },
+                onValueChange = onIntervalChange,
+                placeholder = { Text("15", color = Color(0xFF90A4AE)) },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                modifier = Modifier.fillMaxWidth(),
-                supportingText = {
-                    Text(
-                        "최소 15분부터 설정 가능 (백그라운드 제약)",
-                        fontSize = 12.sp,
-                        color = Color(0xFF666666)
-                    )
-                }
-            )
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // 진입시드
-            OutlinedTextField(
-                value = seedMoney,
-                onValueChange = onSeedMoneyChange,
-                label = { Text("진입시드 (USDT)") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = Color.White,
+                    unfocusedTextColor = Color.White,
+                    focusedBorderColor = Color(0xFF4FC3F7),
+                    unfocusedBorderColor = Color(0xFF90A4AE)
+                ),
                 modifier = Modifier.fillMaxWidth()
             )
         }
@@ -392,177 +353,123 @@ private fun BasicSettingsCard(
 }
 
 @Composable
-private fun CciIndicatorSettingsCard(
-    cciPeriod: String,
-    cciBreakoutValue: String,
-    cciEntryValue: String,
-    onCciPeriodChange: (String) -> Unit,
-    onBreakoutValueChange: (String) -> Unit,
-    onEntryValueChange: (String) -> Unit
+private fun InvestmentCard(
+    seedMoney: String,
+    enableAutoTrading: Boolean,
+    onSeedMoneyChange: (String) -> Unit,
+    onAutoTradingChange: (Boolean) -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = Color(0xFFF3E5F5)
-        )
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A2E))
     ) {
         Column(
-            modifier = Modifier.padding(16.dp)
+            modifier = Modifier.padding(20.dp)
         ) {
             Text(
-                "CCI 지표 설정",
+                text = "투자 설정",
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color(0xFF9C27B0)
+                color = Color.White,
+                modifier = Modifier.padding(bottom = 16.dp)
+            )
+
+            // 시드머니
+            Text("시드머니 (USDT)", color = Color.White, fontSize = 14.sp)
+            Spacer(modifier = Modifier.height(8.dp))
+            OutlinedTextField(
+                value = seedMoney,
+                onValueChange = onSeedMoneyChange,
+                placeholder = { Text("1000", color = Color(0xFF90A4AE)) },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = Color.White,
+                    unfocusedTextColor = Color.White,
+                    focusedBorderColor = Color(0xFF4FC3F7),
+                    unfocusedBorderColor = Color(0xFF90A4AE)
+                ),
+                modifier = Modifier.fillMaxWidth()
             )
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // CCI 기간
-            OutlinedTextField(
-                value = cciPeriod,
-                onValueChange = onCciPeriodChange,
-                label = { Text("CCI 기간") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // CCI 돌파값
-            OutlinedTextField(
-                value = cciBreakoutValue,
-                onValueChange = onBreakoutValueChange,
-                label = { Text("CCI 돌파값") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+            // 자동매매 스위치
+            Row(
                 modifier = Modifier.fillMaxWidth(),
-                supportingText = {
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text("자동매매", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                    Text("신호 발생시 자동 실행", color = Color(0xFF90A4AE), fontSize = 12.sp)
+                }
+                Switch(
+                    checked = enableAutoTrading,
+                    onCheckedChange = onAutoTradingChange,
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = Color(0xFF4CAF50),
+                        checkedTrackColor = Color(0xFF4CAF50).copy(alpha = 0.5f)
+                    )
+                )
+            }
+
+            if (enableAutoTrading) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFFF9800).copy(alpha = 0.1f))
+                ) {
                     Text(
-                        "CCI가 이 값을 벗어나야 신호 감지 조건 시작",
+                        text = "⚠️ 실제 자금으로 거래가 실행됩니다",
                         fontSize = 12.sp,
-                        color = Color(0xFF666666)
+                        color = Color(0xFFFF9800),
+                        modifier = Modifier.padding(12.dp)
                     )
                 }
-            )
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // CCI 진입값
-            OutlinedTextField(
-                value = cciEntryValue,
-                onValueChange = onEntryValueChange,
-                label = { Text("CCI 진입값") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                modifier = Modifier.fillMaxWidth(),
-                supportingText = {
-                    Text(
-                        "CCI가 이 값 안으로 들어오면 신호 발생",
-                        fontSize = 12.sp,
-                        color = Color(0xFF666666)
-                    )
-                }
-            )
-        }
-    }
-}
-
-// 검증 함수 (분 단위 검증)
-private fun validateInputs(
-    context: Context,
-    interval: String,
-    period: String,
-    breakout: String,
-    entry: String,
-    seed: String
-): Boolean {
-    try {
-        val intervalInt = interval.toInt()
-        val periodInt = period.toInt()
-        val breakoutDouble = breakout.toDouble()
-        val entryDouble = entry.toDouble()
-        val seedDouble = seed.toDouble()
-
-        when {
-            intervalInt < 15 -> {
-                Toast.makeText(context, "진입체크 인터벌은 15분 이상이어야 합니다.", Toast.LENGTH_SHORT).show()
-                return false
-            }
-            intervalInt > 1440 -> {
-                Toast.makeText(context, "진입체크 인터벌은 24시간(1440분) 이하여야 합니다.", Toast.LENGTH_SHORT).show()
-                return false
-            }
-            periodInt < 5 -> {
-                Toast.makeText(context, "CCI 기간은 5 이상이어야 합니다.", Toast.LENGTH_SHORT).show()
-                return false
-            }
-            periodInt > 200 -> {
-                Toast.makeText(context, "CCI 기간은 200 이하여야 합니다.", Toast.LENGTH_SHORT).show()
-                return false
-            }
-            breakoutDouble <= 0 -> {
-                Toast.makeText(context, "CCI 돌파값은 0보다 커야 합니다.", Toast.LENGTH_SHORT).show()
-                return false
-            }
-            entryDouble <= 0 -> {
-                Toast.makeText(context, "CCI 진입값은 0보다 커야 합니다.", Toast.LENGTH_SHORT).show()
-                return false
-            }
-            entryDouble >= breakoutDouble -> {
-                Toast.makeText(context, "CCI 진입값은 돌파값보다 작아야 합니다.", Toast.LENGTH_SHORT).show()
-                return false
-            }
-            seedDouble < 10 -> {
-                Toast.makeText(context, "진입시드는 10 USDT 이상이어야 합니다.", Toast.LENGTH_SHORT).show()
-                return false
-            }
-            seedDouble > 100000 -> {
-                Toast.makeText(context, "진입시드는 100,000 USDT 이하여야 합니다.", Toast.LENGTH_SHORT).show()
-                return false
             }
         }
-
-        return true
-
-    } catch (e: NumberFormatException) {
-        Toast.makeText(context, "올바른 숫자를 입력해주세요.", Toast.LENGTH_SHORT).show()
-        return false
     }
 }
 
 @Composable
-private fun SymbolSelectionDialog(
-    symbols: List<String>,
-    selectedSymbol: String,
-    onSymbolSelected: (String) -> Unit,
-    onDismiss: () -> Unit
+private fun ActivationCard(
+    isActive: Boolean,
+    onToggle: (Boolean) -> Unit
 ) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("코인 선택") },
-        text = {
-            LazyColumn {
-                items(symbols) { symbol ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onSymbolSelected(symbol) }
-                            .padding(vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        RadioButton(
-                            selected = symbol == selectedSymbol,
-                            onClick = { onSymbolSelected(symbol) }
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(symbol)
-                    }
-                }
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isActive) Color(0xFF0D4F3C) else Color(0xFF1A1A2E)
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
+                Text(
+                    text = "전략 활성화",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isActive) Color(0xFF4CAF50) else Color.White
+                )
+                Text(
+                    text = if (isActive) "시세를 모니터링합니다" else "비활성화 상태입니다",
+                    fontSize = 12.sp,
+                    color = Color(0xFF90A4AE)
+                )
             }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text("취소")
-            }
+            Switch(
+                checked = isActive,
+                onCheckedChange = onToggle,
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = Color(0xFF4CAF50),
+                    checkedTrackColor = Color(0xFF4CAF50).copy(alpha = 0.5f)
+                )
+            )
         }
-    )
+    }
 }
